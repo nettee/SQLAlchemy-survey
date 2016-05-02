@@ -18,6 +18,8 @@ instance only.
 
 """
 
+#记录控制（比如是否输出记录？）echo即create_engine函数里的。。
+
 import logging
 import sys
 

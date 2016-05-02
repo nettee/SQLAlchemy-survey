@@ -13,6 +13,9 @@ event system.
 
 """
 
+#弃用核心事件接口
+#这个模块是被弃用的，并被事件系统所取代
+
 from . import event, util
 
 

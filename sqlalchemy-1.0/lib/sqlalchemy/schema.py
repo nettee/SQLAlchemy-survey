@@ -8,6 +8,7 @@
 """Compatibility namespace for sqlalchemy.sql.schema and related.
 
 """
+#/shema.py里是从.sql.base，.sql.schema，.sql.nameing，.sql.ddl导入一些包
 
 from .sql.base import (
     SchemaVisitor

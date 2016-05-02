@@ -17,6 +17,10 @@ regular DB-API connect() methods to be transparently managed by a
 SQLAlchemy connection pool.
 """
 
+#提供许多为不同场景和应用强加的线程行为需求实现的连接池
+#也提供一个DB-API 2.0连接代理机制，允许常规的DB-API连接方法，
+#被SQLAlchemy连接池管理
+
 import time
 import traceback
 import weakref
@@ -27,7 +31,8 @@ from .util import threading, memoized_property, \
     chop_traceback
 
 from collections import deque
-proxies = {}
+proxies = {} #proxies是个字典,value可能是manager,_DBProxy
+#proxies就是池？
 
 
 def manage(module, **params):
@@ -49,7 +54,7 @@ def manage(module, **params):
     """
     try:
         return proxies[module]
-    except KeyError:
+    except KeyError: #如果字典中没有，则设置默认并返回
         return proxies.setdefault(module, _DBProxy(module, **params))
 
 
@@ -59,11 +64,11 @@ def clear_managers():
     All pools and connections are disposed.
     """
 
-    for manager in proxies.values():
+    for manager in proxies.values(): #关闭所有的manager
         manager.close()
-    proxies.clear()
+    proxies.clear() #清空
 
-reset_rollback = util.symbol('reset_rollback')
+reset_rollback = util.symbol('reset_rollback') #symbol是个类
 reset_commit = util.symbol('reset_commit')
 reset_none = util.symbol('reset_none')
 

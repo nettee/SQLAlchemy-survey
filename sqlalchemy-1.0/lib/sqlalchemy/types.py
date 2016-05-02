@@ -9,6 +9,8 @@
 
 """
 
+#/types.py里面，从.sql.type_api和.sql.sqltypes里导入的包
+
 __all__ = ['TypeEngine', 'TypeDecorator', 'UserDefinedType',
            'INT', 'CHAR', 'VARCHAR', 'NCHAR', 'NVARCHAR', 'TEXT', 'Text',
            'FLOAT', 'NUMERIC', 'REAL', 'DECIMAL', 'TIMESTAMP', 'DATETIME',
