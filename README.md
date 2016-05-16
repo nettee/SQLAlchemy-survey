@@ -7,3 +7,17 @@
 /sqlalchemy-1.0 下是SQLAlchemy项目的完整源代码，于2016年3月29日克隆自[zzzeek/sqlalchemy][1]的master分支。
 
 [1]: https://github.com/zzzeek/sqlalchemy
+
+### 配套环境安装
+
+##### 1. 安装SQLAlchemy
+
+```shell
+easy_install SQLAlchemy
+```
+
+##### 2. 安装一个DBAPI
+
+推荐安装[SQLite][SQLite]，一个轻量级数据库，适合测试。
+
+[SQLite]: http://www.sqlite.org/download.html
