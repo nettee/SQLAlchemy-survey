@@ -21,3 +21,11 @@ easy_install SQLAlchemy
 推荐安装[SQLite][SQLite]，一个轻量级数据库，适合测试。
 
 [SQLite]: http://www.sqlite.org/download.html
+
+安装SQLite之后还要安装pysqlite，这是SQLite为Python提供的API，也就是DBAPI。
+
+```shell
+sudo apt-get install libsqlite3-dev
+sudo easy_install pysqlite
+```
+
