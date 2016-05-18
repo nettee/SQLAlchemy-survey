@@ -866,6 +866,7 @@ class ResultProxy(object):
             self._soft_close()
             self.closed = True
 
+    # 给for循环迭代用，每次循环调用一次__iter__
     def __iter__(self):
         while True:
             row = self.fetchone()
@@ -1291,6 +1292,11 @@ class BufferedRowResultProxy(ResultProxy):
         super(BufferedRowResultProxy, self)._soft_close(**kw)
 
     def _fetchone_impl(self):
+        '''
+        调用self.cursor.fetchmany()一次获取多个结果，缓存在__rowbuffer中，
+        每次fetchone时返回一个
+        DBAPI cursor 对象有fetchone, fetchmany, fetchall方法
+        '''
         if self.cursor is None:
             return self._non_result(None)
         if not self.__rowbuffer:

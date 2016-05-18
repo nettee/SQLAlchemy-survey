@@ -1093,7 +1093,8 @@ class Connection(Connectable):
         parameters = _distill_params(multiparams, params)
         ret = self._execute_context(
             dialect,
-            dialect.execution_ctx_cls._init_statement,
+            # 由Dialect创建的ExecutionContext
+            dialect.execution_ctx_cls._init_statement, 
             statement,
             parameters,
             statement, parameters
@@ -1115,6 +1116,7 @@ class Connection(Connectable):
             except AttributeError:
                 conn = self._revalidate_connection()
 
+            # ExecutionContext对象
             context = constructor(dialect, self, conn, *args)
         except Exception as e:
             self._handle_dbapi_exception(
@@ -1146,6 +1148,8 @@ class Connection(Connectable):
             )
 
         evt_handled = False
+        # 交给Dialect.do_execute*()进行处理
+        # Dialect可能拥有多级子类
         try:
             if context.executemany:
                 if self.dialect._has_events:
@@ -1200,6 +1204,7 @@ class Connection(Connectable):
         if context.compiled:
             context.post_exec()
 
+        # 由ExecutionContext生成ResultProxy
         if context.is_crud or context.is_text:
             result = context._setup_crud_result_proxy()
         else:
