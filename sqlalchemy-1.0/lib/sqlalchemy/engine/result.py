@@ -618,6 +618,18 @@ class ResultProxy(object):
 
       col3 = row[mytable.c.mycol] # access via Column object.
 
+    engine.ResultProxy包装了一个DBAPI游标（cursor）对象，
+    使一行结果中的各个字段更容易访问。
+    
+    一个字段可以通过三种方式访问：
+
+    ```Python
+    row = fetchone()
+    col1 = row[0] # 通过位置下标访问
+    col2 = row['col2'] # 通过名字访问
+    col3 = row[mytable.c.mycol] # 通过Column对象访问
+    ```
+
     ``ResultProxy`` also handles post-processing of result column
     data using ``TypeEngine`` objects, which are referenced from
     the originating SQL statement that produced this result set.

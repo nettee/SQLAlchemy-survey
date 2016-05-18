@@ -380,8 +380,11 @@ def create_engine(*args, **kwargs):
         ``(sql, *multiparams, **params)``, to which the ``mock`` strategy will
         dispatch all statement execution. Used only by ``strategy='mock'``.
 
+    `create_engine`函数接受一个数据库URL参数，创建一个`Engine`对象并返回。 `create_engine`函数还接受一个关键字参数strategy，指定创建`Engine`时的策略。每个策略是对应`EngineStrategy`的一个子类，调用这个类的`create`方法创建`Engine`对象。如果strategy参数没有提供，则使用默认策略`DefaultEngineStrategy`。在所有策略中，都会创建一个`Dialect`对象和`Pool`对象，`Engine`对象则保存有这两个对象的引用。
     """
 
+    # 两个参数的dict.pop(): 如果kwars中不存在'strategy'键，
+    # 则返回default_strategy
     strategy = kwargs.pop('strategy', default_strategy)
     strategy = strategies.strategies[strategy]
     return strategy.create(*args, **kwargs)

@@ -32,5 +32,8 @@ conn.execute(addresses.insert(), [
         {'user_id': 2, 'email_address' : 'wendy@aol.com'},
 ])
 
-s = select([users])
+#s = select([users.c.name, users.c.fullname])
+s = select([users, addresses])
 result = conn.execute(s)
+for row in result:
+    print row

@@ -21,3 +21,4 @@ sqlnet.log
 /test.py
 /.cache/
 *.swp
+*.txt

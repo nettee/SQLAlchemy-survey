@@ -57,6 +57,10 @@ from .dml import Insert, Update, Delete, UpdateBase, ValuesBase
 # the functions to be available in the sqlalchemy.sql.* namespace and
 # to be auto-cross-documenting from the function to the class itself.
 
+# select是一个全局的函数，而不是类。在sql/expression.py中，
+# 调用public_factory，将selectable.Select类变为函数select，
+# 也就是将 `Select.__init__()`赋值给select。
+
 all_ = public_factory(CollectionAggregate._create_all, ".expression.all_")
 any_ = public_factory(CollectionAggregate._create_any, ".expression.any_")
 and_ = public_factory(BooleanClauseList.and_, ".expression.and_")
