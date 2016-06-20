@@ -1,6 +1,16 @@
-SQLAlchemy 1.0版本共有272353行Python代码，929个类。而且由于Python的语法灵活，函数和类都可以作为一个对象进行传递，在SQLAlchemy的源代码中大量使用Python高阶函数和反射（自省）特性，给阅读源代码造成了一定困难。本调研笔记中的相当一部分内容来自源代码中的注释与SQLAlchemy在线文档。
+#### 写在前面
+
+SQLAlchemy不是一个应用软件，而是一个Python Library。库的一个特点是，为了给用户提供友好的语法，常常会使用一些语言的高级特性。SQLAlchemy也不例外，源代码中大量涉及到Python的反射（自省），并使用了描述符（descriptor）等高级语言特性，给阅读源代码造成了一定困难。
+
+本调研笔记中的相当一部分内容参考自SQLAlchemy在线文档。
 
 ## 20.2 核心层与ORM层
+
+原文中已经给出了SQLAlchemy的两个层次的关系图：
+
+![Figure 20.1][fig1]
+
+SQLAlchemy的两个最主要的功能点就是**对象-关系映射（ORM）**和**SQL表达式语言**。SQL表达式语言可以独立于ORM使用。而当用户使用ORM时，SQL表达式语言在背后工作，但用户也可以通过开放的API操纵SQL表达式语言的行为。
 
 在理解SQLAlchemy的分层之前，首先要明确SQLAlchemy的定位，SQLAlchemy工作在DBAPI上，是一个抽象层次更高的系统。在应用中使用SQLAlchemy处理关系数据库的时候，从上到下有这样几个层次：
 
@@ -20,28 +30,57 @@ pysqlite遵循DBAPI规范，[DBAPI][DBAPI]定义了Python访问数据库的通�
 [DBAPI]: https://www.python.org/dev/peps/pep-0249/
 
 
-## 20.3 驯服DBAPI
+## 20.3 改良DBAPI
 
-上文提到过，SQLAlchemy核心层是构建在DBAPI之上的。那么首先我们要弄清楚SQLAlchemy核心层是怎么通过DBAPI进行数据库连接和交互的。回顾图20.2中的示意图：
+首先，我们要理解什么是DBAPI，以下内容引用自SQLAlchemy文档的术语表：
 
-![Figure 20.2](https://raw.githubusercontent.com/nettee/SQLAlchemy-survey/master/picture/engine.png)
+> DBAPI是“Python数据库API规范”（Python Database API Specification）的简称。这是在Python中广泛使用的规范，定义了数据库连接的第三方库的使用模式。DBAPI是一个低层的API，在一个Python应用中基本上位于最底层，和数据库直接进行交互。SQLAlchemy的方言系统按照DBAPI的操作来构建。基本上，一个方言就是DBAPI加上一个特定的数据库引擎。通过在`create_engine()`函数中提供不同的数据库URL可以将方言绑定到不同的数据库引擎上。 
+>
+> 参见： [PEP 249 - Python Database API Specification v2.0](http://www.python.org/dev/peps/pep-0249/)
+>
+> —— [SQLAlchemy文档 - 术语表 - DBAPI](http://docs.sqlalchemy.org/en/rel_1_0/glossary.html#term-dbapi)
 
-这六个都是SQLAlchemy处理DBAPI的关键类，但用户代码在最简单的情况下只会使用到`Engine`, `Connection`, `ResultProxy`三个类，`Pool`, `Dialect`和`ExecutionContext`类则是隐藏在幕后的。一个简单的示例代码如下：
+
+PEP的文档介绍比较枯燥，我们可以通过这个示例代码直观地理解DBAPI的使用模式：
 
 ```Python
-from sqlalchemy import *
-engine = create_engine('sqlite:///:memory:', echo=True)
-connection = engine.connect()
-result = connection.execute('select * from table')
-for row in result:
-    print row
+connection = dbapi.connect(user="root", pw="123456", host="localhost:8000")
+cursor = connection.cursor()
+cursor.execute("select * from user_table where name=?", ("jack",))
+print "Columns in result:", [desc[0] for desc in cursor.description]
+for row in cursor.fetchall():
+    print "Row:", row
+cursor.close()
+connection.close()
 ```
 
+作为对比，SQLAlchemy的使用模式是这样的：
+
+```Python
+engine = create_engine("postgresql://user:pw@host/dbname")
+connection = engine.connect()
+result = connection.execute("select * from user_table where name=?", "jack")
+print result.fetchall()
+connection.close()
+```
+
+可以看到，二者的使用模式非常相似，都是直接通过SQL语句进行查询。SQLAlchemy只进行了封装，但没有进行高层次的抽象。不过，这只是SQLAlchemy最简单的使用方式，后面会看到，使用SQL表达式语言可以进行抽象性很高的描述，不需要手写SQL语句。
+
+原文中给出了SQLAlchemy方言系统核心类的关系图：
+
+![Figure20.2][fig2]
+
+对照原文中的描述，阅读源代码：
+
+> `Engine`、`Connection`两个类的`execute`方法返回的结果是一个`ResultProxy`，它提供了一个与DBAPI的游标类似但功能更丰富的接口。`Engine`，`Connection`和`ResultProxy`分别对应于DBAPI模块、一个具体的DBAPI连接对象，和一个具体的DBAPI游标对象。
+>
+> 在底层，`Engine`引用了一个叫`Dialect`的对象。`Dialect`是一个有众多实现的抽象类，它的每一个实现都对应于一个具体的DBAPI和数据库。一个为`Engine`而创建的`Connection`会咨询`Dialect`作出选择，对于不同的目标DBAPI和数据库，`Connection`的行为都不一样。
+>
+> `Connection`创建时会从一个连接池获取并维护一个DBAPI的连接，这个连接池叫`Pool`，也和`Engine`相关联。`Pool`负责创建新的DBAPI连接，通常在内存中维护DBAPI连接池，供频繁的重复使用。
+>
+> 在一个语句执行的过程中，`Connection`会创建一个额外的`ExecutionContext`对象。这个对象从开始执行的时刻，一直存在到`ResultProxy`消亡为止。
+
 #### Engine和Connection
-
-`Engine`是SQLAlchemy应用的入口点，是DBAPI的封装。但`Engine`并不直接处理DBAPI，而是在内部保存了`Pool`和`Dialect`的引用，用`Pool`处理数据库连接，用`Dialect`处理数据库行为。总体的结构如下图所示：
-
-![Figure: engine architecture](http://docs2.sqlalchemy.org/en/latest/_images/sqla_engine_arch.png)
 
 全局函数`create_engine`用来创建`Engine`对象，这个函数的第一个参数是一个数据库URL，还有一些关键字参数，用来控制`Engine`，`Pool`和`Dialect`对象的特性。其中关键字参数strategy用于指定创建`Engine`时的策略。函数会从全局的`strategies`字典中查找对应的策略（`EngineStrategy`的一个子类），将自己的参数传入策略类的`create`方法。如果strategy参数没有提供，则使用默认策略`DefaultEngineStrategy`。观察每个`EngineStrategy`子类的`create`方法，发现它们都会在创建`Engine`对象之前先创建`Dialect`对象和`Pool`对象，并将这两个对象的引用保存在`Engine`对象中，保证了`Engine`对象可以通过`Dialect`和`Pool`处理DBAPI。
 
@@ -135,8 +174,88 @@ def __iter__(self):
 
 ## 20.4 模式定义
 
+> 数据库模式是用形式化的语言描述的数据库系统的结构。在关系数据库中，模式定义了表、表中字段，以及表和字段间的关系
+>
+> —— [Webopedia](http://www.webopedia.com/TERM/S/schema.html)
+
+直观来说，下面的SQL语句就描述了一个数据库的模式：
+
+```SQL
+CREATE TABLE users (
+    id INTEGER NOT NULL,
+    name VARCHAR,
+    fullname VARCHAR,
+    PRIMARY KEY (id)
+);
+
+CREATE TABLE addresses (
+    id INTEGER NOT NULL,
+    user_id INTEGER,
+    email_address VARCHAR NOT NULL,
+    PRIMARY KEY (id),
+    FOREIGN KEY(user_id) REFERENCES users (id)
+);
+```
+
+SQLAlchemy的模式定义功能就是用一种抽象的方式表达上面SQL语句的内容。下面的代码定义了和上面SQL语句相同的模式：
+
+```Python
+metadata = MetaData()
+
+users = Table('users', metadata,
+        Column('id', Integer, primary_key=True),
+        Column('name', String),
+        Column('fullname', String),
+)
+addresses = Table('addresses', metadata,
+        Column('id', Integer, primary_key=True),
+        Column('user_id', None, ForeignKey('users.id')),
+        Column('email_address', String, nullable=False),
+)
+
+metadata.create_all(engine)
+```
+
+我们知道，SQL语言一共分为四大类：DDL，DML，DQL，DCL。DCL和具体的DBMS相关，这里不涉及。剩下的三类中，DDL和DML/DQL有很大的区别。上面的`CREATE TABLE`语句即属于DDL。对于DDL，SQLAlchemy使用Metadata进行抽象，而对于DML和DQL，SQLAlchemy使用SQL表达式语言进行抽象。
+
+## 20.5 SQL表达式
+
+SQLAlchemy的作者Mike Bayer在文章中指出，SQL表达式语言使用了Martin Fowler在*Patterns of Enterprise Application Architecture*书中的**查询对象**(Query Object)模式。Martin Fowler在书中是这么描述这个模式的：
+
+> SQL是一个演化中的语言，很多开发人员对它不是非常熟悉。而且，你在写查询语句的时候需要知道数据库schema是什么样的。查询对象模式可以解决这些问题。
+>
+> 查询对象是一个解释器模式(Interpreter Pattern)，也就是一个对象可以把自己变成一个SQL查询。你可以通过使用类和属性，而不是表和字段来创建一条查询。用这种方法，你在写查询语句时可以不依赖数据库schema，对schema的改变也不会造成全局的影响。
+
+
+
 sqlalchemy.sql.dml.Insert是UpdateBase的子类，而UpdateBase同时是ClauseElement和Executable的子类，所以可以将Insert的实例传给Connection.execute()
 
 select是一个全局的函数，而不是类。在sql/expression.py中，调用public_factory，将selectable.Select类变为函数select，也就是将
 `Select.__init__()`赋值给select。
 
+--- 
+
+# 参考资料
+
++ [SQLAlchemy 1.0 官方文档](http://docs.sqlalchemy.org/en/rel_1_0/index.html)
++ [Mike Bayer: SQLAlchemy所实现的模式](http://techspot.zzzeek.org/2012/02/07/patterns-implemented-by-sqlalchemy/)
++ [Mike Bayer: SQLAlchemy架构回顾](http://techspot.zzzeek.org/files/2011/sqla_arch_retro.key.pdf)
+
+<!-- 以下内容不要删除 -->
+
+[fig1]: https://raw.githubusercontent.com/nettee/SQLAlchemy-survey/master/picture/layers.png
+[fig2]: https://raw.githubusercontent.com/nettee/SQLAlchemy-survey/master/picture/engine.png
+[fig3]: https://raw.githubusercontent.com/nettee/SQLAlchemy-survey/master/picture/dialect-simple.png
+[fig4]: https://raw.githubusercontent.com/nettee/SQLAlchemy-survey/master/picture/common-dbapi.png
+[fig5]: https://raw.githubusercontent.com/nettee/SQLAlchemy-survey/master/picture/basic-schema.png
+[fig6]: https://raw.githubusercontent.com/nettee/SQLAlchemy-survey/master/picture/table-column-crossover.png
+[fig7]: https://raw.githubusercontent.com/nettee/SQLAlchemy-survey/master/picture/expression-hierarchy.png
+[fig8]: https://raw.githubusercontent.com/nettee/SQLAlchemy-survey/master/picture/example-expression.png
+[fig9]: https://raw.githubusercontent.com/nettee/SQLAlchemy-survey/master/picture/compiler-hierarchy.png
+[fig10]: https://raw.githubusercontent.com/nettee/SQLAlchemy-survey/master/picture/statement-compilation.png
+[fig11]: https://raw.githubusercontent.com/nettee/SQLAlchemy-survey/master/picture/mapper-components.png
+[fig12]: https://raw.githubusercontent.com/nettee/SQLAlchemy-survey/master/picture/query-loading.png
+[fig13]: https://raw.githubusercontent.com/nettee/SQLAlchemy-survey/master/picture/session-overview.png
+[fig14]: https://raw.githubusercontent.com/nettee/SQLAlchemy-survey/master/picture/topological-sort.png
+[fig15]: https://raw.githubusercontent.com/nettee/SQLAlchemy-survey/master/picture/uow-mapper-buckets.png
+[fig16]: https://raw.githubusercontent.com/nettee/SQLAlchemy-survey/master/picture/uow-element-buckets.png
