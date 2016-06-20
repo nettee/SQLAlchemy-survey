@@ -1,7 +1,10 @@
 #!/usr/bin/env python
 
+# encoding: utf-8
+
 from sqlalchemy import *
-engine = create_engine('sqlite:///:memory:', echo=True)
+
+engine = create_engine('sqlite:///:memory:', echo=False)
 
 metadata = MetaData()
 users = Table('users', metadata,
@@ -17,9 +20,9 @@ addresses = Table('addresses', metadata,
 
 metadata.create_all(engine)
 
-ins = users.insert().values(name='Jack', fullname='Jack Jones')
-
 conn = engine.connect()
+
+ins = users.insert().values(name='Jack', fullname='Jack Jones')
 result = conn.execute(ins)
 
 ins = users.insert()
@@ -32,8 +35,13 @@ conn.execute(addresses.insert(), [
         {'user_id': 2, 'email_address' : 'wendy@aol.com'},
 ])
 
-#s = select([users.c.name, users.c.fullname])
-s = select([users, addresses])
-result = conn.execute(s)
+for table in (users, addresses):
+    print 'table %s' % str(table)
+    s = select([table])
+    result = conn.execute(s)
+    for row in result:
+        print row
+
+result = conn.execute(select([addresses]))
 for row in result:
-    print row
+    print row[addresses.c.email_address]
