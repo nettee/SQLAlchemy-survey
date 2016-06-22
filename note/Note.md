@@ -12,6 +12,9 @@ SQLAlchemy不是一个应用软件，而是一个Python Library。库的一个�
 
 SQLAlchemy的两个最主要的功能点就是**对象-关系映射（ORM）**和**SQL表达式语言**。SQL表达式语言可以独立于ORM使用。而当用户使用ORM时，SQL表达式语言在背后工作，但用户也可以通过开放的API操纵SQL表达式语言的行为。
 
+
+```
+（这一段暂时不用）
 在理解SQLAlchemy的分层之前，首先要明确SQLAlchemy的定位，SQLAlchemy工作在DBAPI上，是一个抽象层次更高的系统。在应用中使用SQLAlchemy处理关系数据库的时候，从上到下有这样几个层次：
 
 1. SQLAlchemy ORM层
@@ -28,7 +31,7 @@ Python中与SQLite进行交互的模块叫做pysqlite，由于SQLite数据库较
 pysqlite遵循DBAPI规范，[DBAPI][DBAPI]定义了Python访问数据库的通用接口，规定了Connection, Cursor等对象的行为和方法，不同的数据库厂商开发Python与数据库交互的模块时，都遵循DBAPI，这样Python程序就不需要考虑底层数据库的实现细节。在DBAPI这一层，已经进行了一次封装和抽象。
 
 [DBAPI]: https://www.python.org/dev/peps/pep-0249/
-
+```
 
 ## 20.3 改良DBAPI
 
@@ -228,10 +231,12 @@ SQLAlchemy的作者Mike Bayer在文章中指出，SQL表达式语言使用了Mar
 
 Mike Bayer指出，SQL表达式的创建主要使用了**Python表达式**和**重载的操作符**。
 
-sqlalchemy.sql.dml.Insert是UpdateBase的子类，而UpdateBase同时是ClauseElement和Executable的子类，所以可以将Insert的实例传给Connection.execute()
+#### 源代码分析
 
-select是一个全局的函数，而不是类。在sql/expression.py中，调用public_factory，将selectable.Select类变为函数select，也就是将
-`Select.__init__()`赋值给select。
+`sqlalchemy.sql.dml.Insert`是`UpdateBase`的子类，而`UpdateBase`同时是`ClauseElement`和`Executable`的子类，所以可以将`Insert`的实例传给`Connection.execute()`
+
+`select`是一个全局的函数，而不是类。在sql/expression.py中，调用`public_factory`，将`selectable.Select`类变为函数`select`，也就是将
+`Select.__init__()`赋值给`select`。
 
 --- 
 
