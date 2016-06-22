@@ -4,7 +4,7 @@ SQLAlchemy不是一个应用软件，而是一个Python Library。库的一个�
 
 本调研笔记中的相当一部分内容参考自SQLAlchemy在线文档。
 
-## 20.2 核心层与ORM层
+## 2. SQLAlchemy的两层结构
 
 原文中已经给出了SQLAlchemy的两个层次的关系图：
 
@@ -33,7 +33,7 @@ pysqlite遵循DBAPI规范，[DBAPI][DBAPI]定义了Python访问数据库的通�
 [DBAPI]: https://www.python.org/dev/peps/pep-0249/
 ```
 
-## 20.3 改良DBAPI
+## 3. 改良DBAPI
 
 首先，我们要理解什么是DBAPI，以下内容引用自SQLAlchemy文档的术语表：
 
@@ -175,7 +175,7 @@ def __iter__(self):
 
 
 
-## 20.4 模式定义
+## 4. 模式定义
 
 > 数据库模式是用形式化的语言描述的数据库系统的结构。在关系数据库中，模式定义了表、表中字段，以及表和字段间的关系
 >
@@ -221,9 +221,9 @@ metadata.create_all(engine)
 
 我们知道，SQL语言一共分为四大类：DDL，DML，DQL，DCL。DCL和具体的DBMS相关，这里不涉及。剩下的三类中，DDL和DML/DQL有很大的区别。上面的`CREATE TABLE`语句即属于DDL。对于DDL，SQLAlchemy使用Metadata进行抽象，而对于DML和DQL，SQLAlchemy使用SQL表达式语言进行抽象。
 
-## 20.5 SQL表达式
+## 5. SQL表达式语言
 
-SQLAlchemy的作者Mike Bayer在文章中指出，SQL表达式语言使用了Martin Fowler在*Patterns of Enterprise Application Architecture*书中的**查询对象**(Query Object)模式。Martin Fowler在书中是这么描述这个模式的：
+SQLAlchemy的作者Mike Bayer在文章中指出，SQLAlchemy的SQL表达式语言系统使用了Martin Fowler在*Patterns of Enterprise Application Architecture*书中描述的**查询对象**(Query Object)模式。Martin Fowler在书中是这么描述这个模式的：
 
 > SQL是一个演化中的语言，很多开发人员对它不是非常熟悉。而且，你在写查询语句的时候需要知道数据库schema是什么样的。查询对象模式可以解决这些问题。
 >
@@ -238,13 +238,83 @@ Mike Bayer指出，SQL表达式的创建主要使用了**Python表达式**和**�
 `select`是一个全局的函数，而不是类。在sql/expression.py中，调用`public_factory`，将`selectable.Select`类变为函数`select`，也就是将
 `Select.__init__()`赋值给`select`。
 
+## 6. 对象-关系映射（ORM）
+
+什么是ORM呢？让我们先看看Martin Fowler在书中所描述的**数据映射器**(Data Mapper)模式。原文中提到，SQLAlchemy的ORM系统正是借鉴了这种模式。
+
+> ![Figure: DatabaseMapperSketch](http://martinfowler.com/eaaCatalog/databaseMapperSketch.gif)
+>
+> 对象和关系数据库组织数据的方式是不同的。对象中的很多部分，如继承，在关系数据库中是没有的。当你建立了一个有大量业务逻辑的对象模型，对象的schema和关系数据库的schema就可能不匹配。
+>
+> 但你仍需要在两种schema之间进行转换，这种转换本身就成为一个复杂的东西。如果内存中的对象知道关系数据库的结构，两者之间一者的改变就会影响到另一者。
+>
+> 数据映射器(Data Mapper)是将内存中的对象和数据库分离的一层系统。它的责任是分隔对象和关系数据库，并在两者之间转换数据。有了数据映射器，内存中的对象既不需要的SQL接口代码，也不需要知道数据库schema，甚至都不需要知道数据库是否存在。
+>
+> —— Martin Fowler: [*Patterns of Enterprise Application Architecture*, Data Mapper](http://martinfowler.com/eaaCatalog/dataMapper.html)
+
+为了理解上面这段话的含义，我们看下面的示例代码：
+
+```Python
+from sqlalchemy import Table, MetaData, Column, Integer, String, ForeignKey
+from sqlalchemy.orm import mapper
+
+metadata = MetaData()
+
+users = Table('users', metadata,
+        Column('id', Integer, primary_key=True),
+        Column('name', String),
+        Column('fullname', String),
+)
+
+class User(object):
+    def __init__(self, name, fullname, password):
+        self.name = name
+        self.fullname = fullname
+        self.password = password
+
+mapper(User, users)
+```
+
+在上面的代码中，`User`类是用户自己定义的类，它是业务逻辑中的一个实体对象。而`users`是数据库的schema（在第四节“模式定义”中已经详细分析过）。使用`mapper`函数将`User`类映射到schema上。注意到，`User`类和数据库的schema完全无关，在不知道数据存储方式的情况下就可以写出这个类。这样就实现了对象和数据库的分离。
+
+#### 两类映射
+
+所谓“传统的”和“声明式的”，不过是SQLAlchemy中用户定义ORM的新旧两种风格。SQLAlchemy一开始只支持传统映射，后来出现了声明式映射，它在传统映射的基础上建立，功能更丰富，表达更简洁。两个映射方式可以互相交换使用，结果是一模一样的。而且声明式映射最终也会被转换为传统映射——用`mapper()`函数映射一个用户定义的类，因此两种映射方式在本质上是没有区别的。
+
+按我的理解，传统映射思路更加明确，更能体现对象和数据库分离的思想，而声明式映射功能更强大。
+
+## 8. 标识映射
+
+> ![Figure: Identity Mapper Sketch](http://www.martinfowler.com/eaaCatalog/idMapperSketch.gif)
+> 
+> 一个古老的谚语说，一个有两块手表的人永远不知道时间是多少。在从数据库加载对象时，如果两块表（两个对象）不一致，你会有更大的麻烦。你一不小心就可能从同一个数据库中加载数据并存到两个不同的对象中。当你同时更新了两个对象，你在把改变写到数据库时，就会出现一些奇怪的结果。
+>
+> 这还和一个明显的性能问题有关。如果你不止一次加载同一份数据，会导致远程调用的昂贵开销。那么，避免加载同一份数据两次，不仅能保证正确性，还能提升应用的性能。
+>
+> 标识映射保存了在一个事务中从数据库中读取出的所有数据。当你需要一份（加载到对象中的）数据时，首先检查标识映射，看看是不是已经有了。
+>
+> —— Martin Fowler, [*Patterns of Enterprise Application Architecture*, Identity Map](http://www.martinfowler.com/eaaCatalog/identityMap.html)
+
+> If the requested data has already been loaded from the database, the identity map returns the same instance of the already instantiated object, but if it has not been loaded yet, it loads it and stores the new object in the map. In this way, it follows a similar principle to lazy loading.
+> 
+> -- Wikipedia, Identity Map Pattern
+
+> A mapping between Python objects and their database identities. The identity map is a collection that’s associated with an ORM session object, and maintains a single instance of every database object keyed to its identity. The advantage to this pattern is that all operations which occur for a particular database identity are transparently coordinated onto a single object instance. When using an identity map in conjunction with an isolated transaction, having a reference to an object that’s known to have a particular primary key can be considered from a practical standpoint to be a proxy to the actual database row.
+>
+> -- SQLAlchemy Documentation, Glossary
+
+## 9. 工作单元
+
 --- 
 
 # 参考资料
 
 + [SQLAlchemy 1.0 官方文档](http://docs.sqlalchemy.org/en/rel_1_0/index.html)
 + [Mike Bayer: SQLAlchemy所实现的模式](http://techspot.zzzeek.org/2012/02/07/patterns-implemented-by-sqlalchemy/)
-+ [Mike Bayer: SQLAlchemy架构回顾](http://techspot.zzzeek.org/files/2011/sqla_arch_retro.key.pdf)
++ [Mike Bayer: SQLAlchemy架构回顾]
++ [Catalog of Patterns of Enterprise Application Architecture](http://martinfowler.com/eaaCatalog/)
+(http://techspot.zzzeek.org/files/2011/sqla_arch_retro.key.pdf)
++ [Hibernate文档 - 什么是ORM](http://hibernate.org/orm/what-is-an-orm/)
 
 <!-- 以下内容不要删除 -->
 
