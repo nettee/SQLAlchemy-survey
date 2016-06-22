@@ -226,7 +226,7 @@ SQLAlchemy的作者Mike Bayer在文章中指出，SQL表达式语言使用了Mar
 >
 > 查询对象是一个解释器模式(Interpreter Pattern)，也就是一个对象可以把自己变成一个SQL查询。你可以通过使用类和属性，而不是表和字段来创建一条查询。用这种方法，你在写查询语句时可以不依赖数据库schema，对schema的改变也不会造成全局的影响。
 
-
+Mike Bayer指出，SQL表达式的创建主要使用了**Python表达式**和**重载的操作符**。
 
 sqlalchemy.sql.dml.Insert是UpdateBase的子类，而UpdateBase同时是ClauseElement和Executable的子类，所以可以将Insert的实例传给Connection.execute()
 
