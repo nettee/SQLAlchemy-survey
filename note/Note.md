@@ -4,6 +4,18 @@ SQLAlchemy不是一个应用软件，而是一个Python Library。库的一个�
 
 本调研笔记中的相当一部分内容参考自SQLAlchemy在线文档。
 
+## 1. 数据库抽象面临的挑战
+
+原文中给出了一个概念，叫做“对象-关系阻抗失配”(object-relational impedance mismatch)问题。这个概念的含义是这样的：
+
+“对象-关系阻抗失配”(object-relational impedance mismatch)，有时候叫做“范式不匹配”(paradigm mismatch)，指的是对象模型和关系模型不能很好地共同工作。关系数据库系统用表格的形式表示数据，然而面向对象的语言，如Java，是用相联系的对象来表示的。用表格状的关系数据库加载和存储对象，暴露了下面五个不匹配的问题。
+
++ **粒度**：有时候你的对象模型中的类比对应的数据库中的表的数量要多（我们把这个叫做对象模型比关系模型粒度更细）。想想一个地址的例子就知道了
++ **继承**：继承是面向对象编程语言中一个自然的范式，然而，关系数据库系统基本上无法定义类似的东西（确实有些数据库支持子类，但那完全不是规范化的东西）
++ **相等关系**：关系数据库系统只定义了一种“相等”的概念：主键相等则元组相等。面向对象语言中则常常有两种相等关系。例如，Python中的`a is b`（全等）和`a == b`（相等）。
++ **关联性**：在面向对象语言中，关联表示为单向引用，而在关系数据库系统中，关联表示为外键。如果你在Python中需要定义双向关联，你必须定义两次关联。
++ **获取数据的方式**：你在Python中访问数据的方式和在关系数据库中访问数据的方式有本质的不同。在Python中，你在一个对象中通过引用访问到另一个对象。但这在关系数据库中不是一个获取数据的高效方法，你可能想要让SQL查询与的数量最小。
+
 ## 2. SQLAlchemy的两层结构
 
 原文中已经给出了SQLAlchemy的两个层次的关系图：
@@ -173,8 +185,6 @@ def __iter__(self):
             yield row
 ```
 
-
-
 ## 4. 模式定义
 
 > 数据库模式是用形式化的语言描述的数据库系统的结构。在关系数据库中，模式定义了表、表中字段，以及表和字段间的关系
@@ -218,6 +228,80 @@ addresses = Table('addresses', metadata,
 
 metadata.create_all(engine)
 ```
+
+`MetaData`的名字来自元数据映射模式，但真正实现了这个模式的实际上是`Table`和`mapper()`函数，下面关于ORM的章节将会详细讲述。
+
+`MetaData`对象保存了所有的schema相关的所有结构，特别是`Table`对象。`sorted_tables`方法返回`Table`对象的列表。
+
+In most cases, individual :class:`~sqlalchemy.schema.Table` objects have been
+explicitly declared, and these objects are typically accessed directly as
+module-level variables in an application. Once a
+:class:
+
+当一个`Table`对象被创建时，就有了很多访问信息的方法：
+
+```Python
+employees = Table('employees', metadata,
+    Column('employee_id', Integer, primary_key=True),
+    Column('employee_name', String(60), nullable=False),
+    Column('employee_dept', Integer, ForeignKey("departments.department_id"))
+)
+
+# access the column "EMPLOYEE_ID":
+employees.columns.employee_id
+
+# or just
+employees.c.employee_id
+
+# via string
+employees.c['employee_id']
+
+# iterate through all columns
+for c in employees.c:
+    print c
+
+# get the table's primary key columns
+for primary_key in employees.primary_key:
+    print primary_key
+
+# get the table's foreign key objects:
+for fkey in employees.foreign_keys:
+    print fkey
+
+# access the table's MetaData:
+employees.metadata
+
+# access the table's bound Engine or Connection, if its MetaData is bound:
+employees.bind
+
+# access a column's name, type, nullable, primary key, foreign key
+employees.c.employee_id.name
+employees.c.employee_id.type
+employees.c.employee_id.nullable
+employees.c.employee_id.primary_key
+employees.c.employee_dept.foreign_keys
+
+# get the "key" of a column, which defaults to its name, but can
+# be any user-defined string:
+employees.c.employee_name.key
+
+# access a column's table:
+employees.c.employee_id.table is employees
+
+# get the table related by a foreign key
+list(employees.c.employee_dept.foreign_keys)[0].column.table
+```
+
+ has been defined, it has a full set of
+accessors which allow inspection of its properties. Given the following
+:class:`~sqlalchemy.schema.Table` definition::
+
+
+
+
+
+阅读源代码，`Table`的构造函数`__new__`的前两个参数分别是表名和`MetaData`对象。构造函数会创建一个名字唯一的`Table`对象，用同样的表名和`MetaData`对象再次调用构造函数，会返回相同的对象。因此`Table`的构造函数充当了“注册”的角色。
+
 
 我们知道，SQL语言一共分为四大类：DDL，DML，DQL，DCL。DCL和具体的DBMS相关，这里不涉及。剩下的三类中，DDL和DML/DQL有很大的区别。上面的`CREATE TABLE`语句即属于DDL。对于DDL，SQLAlchemy使用Metadata进行抽象，而对于DML和DQL，SQLAlchemy使用SQL表达式语言进行抽象。
 
@@ -310,10 +394,10 @@ mapper(User, users)
 # 参考资料
 
 + [SQLAlchemy 1.0 官方文档](http://docs.sqlalchemy.org/en/rel_1_0/index.html)
++ Martin Fowler: Patterns of Enterprise Application Architecture 
 + [Mike Bayer: SQLAlchemy所实现的模式](http://techspot.zzzeek.org/2012/02/07/patterns-implemented-by-sqlalchemy/)
-+ [Mike Bayer: SQLAlchemy架构回顾]
++ [Mike Bayer: SQLAlchemy架构回顾](http://techspot.zzzeek.org/files/2011/sqla_arch_retro.key.pdf)
 + [Catalog of Patterns of Enterprise Application Architecture](http://martinfowler.com/eaaCatalog/)
-(http://techspot.zzzeek.org/files/2011/sqla_arch_retro.key.pdf)
 + [Hibernate文档 - 什么是ORM](http://hibernate.org/orm/what-is-an-orm/)
 
 <!-- 以下内容不要删除 -->
