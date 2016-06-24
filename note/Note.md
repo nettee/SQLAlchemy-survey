@@ -1,51 +1,53 @@
-SQLAlchemy诞生于2005年，是一个Python语言的数据库工具包和对象关系映射(ORM)系统。在一开始，SQLAlchemy是一个提供使用Python数据库API（DBAPI）处理关系数据库的端到端系统。它的核心特性包括顺畅地处理复杂的SQL查询和对象映射和“工作单元”(unit of work)模式的实现。这些特性使得SQLAlchemy能够提供高度自动化的数据库系统，因此SQLAlchemy在很早期的几个版本里就受到了大量的关注。
+#### 写在前面
 
-SQLAlchemy从一个小的、实现粗糙的概念开始，通过一系列的修订迅速进步。在用户技术不断增长的同时，内部架构和外部API也在迭代更新。在2009年1月0.5版本面世时，SQLAlchemy已经在大范围的生产部署后稳定了下来，到了0.6版本（2010年4月）和0.7版本（2011年5月），架构和API的改进使得生产最高效和最稳定的库成为可能。在写作本文时，SQLAlchemy已经在多个领域中被大量组织所采用。在很多人眼中，它已经成为Python关系数据库处理事实上的标准。
+SQLAlchemy不是一个应用软件，而是一个Python Library。库的一个特点是，为了给用户提供友好的语法，常常会使用一些语言的高级特性。SQLAlchemy也不例外，源代码中大量涉及到Python的反射（自省），并使用了描述符（descriptor）等高级语言特性，给阅读源代码造成了一定困难。
 
-## 20.1 数据库抽象面临的挑战
+本调研笔记中的相当一部分内容参考自SQLAlchemy在线文档。
 
-术语“数据库抽象”通常用来表示一个隐藏了数据存储和查询的细节的系统。人们有时候会把这个术语极端化，认为不仅关系数据库的细节应当被系统隐藏，甚至连关系结构本身都应当隐藏，用户不需要关心底层的存储结构是否是关系型的。
+## 2. SQLAlchemy的两层结构
 
-对ORM最常见的评论文章认为这种系统的主要目标就是如上所述——把关系数据库“藏起来”，接管构建数据库和与数据库交互的任务，降格为底层实现细节。这种方式的核心在于剥夺开发人员对关系结构进行设计和查询的能力，转交由不透明的库来处理。
-
-经常和关系数据库打交道的人都知道，这种方式是完全不切实际的。关系结构和SQL查询的功能性很强，组成了软件设计的核心。如何设计、组织、操纵这些结构不仅取决于要查询哪些数据，还取决于数据的结构。如果隐藏了数据的结构，在一开始使用关系型数据库就没有意义了。
-
-既要寻求屏蔽关系数据库底层细节的方法，又面对着关系数据库需要详尽的说明的事实。这种矛盾通常被称为“对象-关系阻抗失配”问题。SQLAlchemy采用了一种比较新颖的方法来解决这个问题。
-
-#### SQLAlchemy 解决数据库抽象的方法
-
-SQLAlchemy认为开发人员必须考虑数据的关系结构。一个预先定义并隐藏数据模式(schema)和查询方法的系统只是在忽视关系型数据库的意义，导致传统的阻抗失配问题。
-
-但与此同时，这些决定的实现可以在，也应该在尽可能高的层次模式上执行。建立对象模型和数据库模式间的关联、并在SQL查询中保持这种关联是一个重复性很高的工作。使用工具自动化执行这些任务，可以使应用开发更加简洁、高效。创建自动化工具的时间，远远少于手工实现这些操作的时间。
-
-SQLAlchemy称自己是一个工具包，强调开发人员的角色应是关系结构及其与应用程序间联系的设计者和构建者，而不是被动地接受一个第三方库所做的决定。SQLAlchemy采取“不完全抽象”理念，暴露关系概念，鼓励开发者在应用程序和关系数据库之间裁剪出一个自定义的、但又是完全自动化的交互层。SQLAlchemy的创新之处在于，它在不牺牲开发者对于关系数据库的控制的同时，实现了高度的自动化。
-
-## 20.2 核心层与ORM层
-
-SQLAlchemy工具包的中心目标是在数据库交互的每一层都开放丰富的API，将任务划分为核心层和ORM层。核心层包括Python数据库API(DBAPI)的交互，生成数据库能够识别的SQL语句，以及模式(schema)管理。这些功能都通过公开的API来展现。ORM层，或者叫对象-关系映射层，则是构建在核心层上的一个特定的库。SQLAlchemy提供的ORM层只是可以构建在核心层上的众多对象抽象层的其中一个，很多开发者和组织是直接在核心层上构建自己的应用。
+原文中已经给出了SQLAlchemy的两个层次的关系图：
 
 ![Figure 20.1][fig1]
 
-图20.1: SQLAlchemy层次图
+SQLAlchemy的两个最主要的功能点就是**对象-关系映射（ORM）**和**SQL表达式语言**。SQL表达式语言可以独立于ORM使用。而当用户使用ORM时，SQL表达式语言在背后工作，但用户也可以通过开放的API操纵SQL表达式语言的行为。
 
-核心层和ORM层的分离一直是SQLAlchemy最典型的特征，这个特征既有优点也有缺点。核心层的显式存在导致：（一）ORM需要将映射到数据库的类属性关联到一个叫`Table`的结构上，而不是直接关联到数据库中表述的字符串属性名。（二）ORM需要使用一个叫`select`的结构来产生SELECT查询，而不是直接将对象属性拼接成一个字符串的语句。（三）ORM需要从`ResultProxy`接受结果行（`ResultProxy`自动将`select`映射到每个结果行），而不是直接操纵数据库游标(cursor)将数据转化成用户定义的对象。
 
-在一个很简单的以ORM为中心的应用中，核心层的元素可能是不可见的。然而，由于核心层是仔细地集成到ORM层，能够支持两个层次间流畅的转化的，一个复杂得多的ORM中心的应用，在形势所迫时，可以“下潜”一两个抽象层次，更具体、更细致地处理数据库。随着SQLAlchemy日渐成熟，ORM层提供了越来越多的全面周到的模式，核心层的API在常规使用中已经很少明显出现了。然而，核心层可操控也是SQLAlchemy早期成功的因素之一，因为这让早期的用户在ORM还不成熟的时候，可以做到很多看似不可能的事情。
+```
+（这一段暂时不用）
+在理解SQLAlchemy的分层之前，首先要明确SQLAlchemy的定位，SQLAlchemy工作在DBAPI上，是一个抽象层次更高的系统。在应用中使用SQLAlchemy处理关系数据库的时候，从上到下有这样几个层次：
 
-核心层/ORM层的缺点是，一个指令必须经过更多的步骤。对于Python传统的C实现，单独的函数调用是额外开销的主要来源，导致了运行时速度缓慢。对此，传统的改善方法是通过重排和内联缩短调用链，并且将性能需求高的模块用C代码代替。SQLAlchemy多年来一直在用这两种方法来提升性能。然而，随着Python的PyPy解释器逐渐被接受，由于PyPy通过JIT的内联和编译减少了长调用链的影响，SQLAlchemy遗留的性能问题或许已经可以忽略，不需要使用C代码来代替。
+1. SQLAlchemy ORM层
+2. SQLAlchemy Core层
+3. DBAPI
+4. DBMS
 
-## 20.3 改良DBAPI
+我们假设用户使用了SQLite数据库。SQLite是一个DBMS（数据库管理系统），位于架构中的最底层。
 
-SQLAlchemy的底层是一个通过DBAPI和数据库进行交互的系统。DBAPI本身不是一个实际的库，只是一个规范。因此，DBAPI有不同的实现，有的是针对特定的目标数据库，比如MySQL或PostgreSQL，有的是针对特定的非DBAPI数据库适配器，如ODBC和JDBC。
+Python中与SQLite进行交互的模块叫做pysqlite，由于SQLite数据库较为流行，pysqlite已经加入Python标准库中，名为[sqlite3][pythonlib-sqlite3]。
 
-DBAPI为SQLAlchemy提出了两点挑战。一点挑战是为DBAPI的基本使用模式提供一个易用且功能全面的接口（译注：facade译为“接口”，因为Facade Pattern即为简化接口的设计模式），另一点挑战是应对极其多变的DBAPI具体实现和数据库引擎。
+[pythonlib-sqlite3]: https://docs.python.org/3/library/sqlite3.html
 
-#### 方言系统
+pysqlite遵循DBAPI规范，[DBAPI][DBAPI]定义了Python访问数据库的通用接口，规定了Connection, Cursor等对象的行为和方法，不同的数据库厂商开发Python与数据库交互的模块时，都遵循DBAPI，这样Python程序就不需要考虑底层数据库的实现细节。在DBAPI这一层，已经进行了一次封装和抽象。
 
-DBAPI描述的接口及其简单。它的核心组件就是DBAPI自己，连接（connection）对象，和游标（cursor）对象——“游标”在数据库中指一个语句（statement）和它相关的结果的上下文。它们相互配合，连接数据库并提取数据的一个简单的例子如下：
+[DBAPI]: https://www.python.org/dev/peps/pep-0249/
+```
+
+## 3. 改良DBAPI
+
+首先，我们要理解什么是DBAPI，以下内容引用自SQLAlchemy文档的术语表：
+
+> DBAPI是“Python数据库API规范”（Python Database API Specification）的简称。这是在Python中广泛使用的规范，定义了数据库连接的第三方库的使用模式。DBAPI是一个低层的API，在一个Python应用中基本上位于最底层，和数据库直接进行交互。SQLAlchemy的方言系统按照DBAPI的操作来构建。基本上，一个方言就是DBAPI加上一个特定的数据库引擎。通过在`create_engine()`函数中提供不同的数据库URL可以将方言绑定到不同的数据库引擎上。 
+>
+> 参见： [PEP 249 - Python Database API Specification v2.0](http://www.python.org/dev/peps/pep-0249/)
+>
+> —— [SQLAlchemy文档 - 术语表 - DBAPI](http://docs.sqlalchemy.org/en/rel_1_0/glossary.html#term-dbapi)
+
+
+PEP的文档介绍比较枯燥，我们可以通过这个示例代码直观地理解DBAPI的使用模式：
 
 ```Python
-connection = dbapi.connect(user="user", pw="pw", host="host")
+connection = dbapi.connect(user="root", pw="123456", host="localhost:8000")
 cursor = connection.cursor()
 cursor.execute("select * from user_table where name=?", ("jack",))
 print "Columns in result:", [desc[0] for desc in cursor.description]
@@ -55,303 +57,266 @@ cursor.close()
 connection.close()
 ```
 
-SQLAlchemy在传统的DBAPI会话之上进行了封装。一开始调用`create_engine`，将连接和配置信息装配好，并返回一个`Engine`类的对象，通过这个对象访问不直接对外开放的DBAPI。
-
-对于简单的语句执行，`Engine`提供了一个叫“隐式执行”（implicit execution）的接口。获取和关闭DBAPI连接的工作过程都被隐藏了起来：
+作为对比，SQLAlchemy的使用模式是这样的：
 
 ```Python
-engine = create_engine("postgresql://user:pw&#64;host/dbname")
-result = engine.execute("select * from table")
+engine = create_engine("postgresql://user:pw@host/dbname")
+connection = engine.connect()
+result = connection.execute("select * from user_table where name=?", "jack")
 print result.fetchall()
+connection.close()
 ```
 
-从0.2版起，SQLAlchemy加入了Connection对象，提供显式维护DBAPI连接的功能：
+可以看到，二者的使用模式非常相似，都是直接通过SQL语句进行查询。SQLAlchemy只进行了封装，但没有进行高层次的抽象。不过，这只是SQLAlchemy最简单的使用方式，后面会看到，使用SQL表达式语言可以进行抽象性很高的描述，不需要手写SQL语句。
+
+原文中给出了SQLAlchemy方言系统核心类的关系图：
+
+![Figure20.2][fig2]
+
+对照原文中的描述，阅读源代码：
+
+> `Engine`、`Connection`两个类的`execute`方法返回的结果是一个`ResultProxy`，它提供了一个与DBAPI的游标类似但功能更丰富的接口。`Engine`，`Connection`和`ResultProxy`分别对应于DBAPI模块、一个具体的DBAPI连接对象，和一个具体的DBAPI游标对象。
+>
+> 在底层，`Engine`引用了一个叫`Dialect`的对象。`Dialect`是一个有众多实现的抽象类，它的每一个实现都对应于一个具体的DBAPI和数据库。一个为`Engine`而创建的`Connection`会咨询`Dialect`作出选择，对于不同的目标DBAPI和数据库，`Connection`的行为都不一样。
+>
+> `Connection`创建时会从一个连接池获取并维护一个DBAPI的连接，这个连接池叫`Pool`，也和`Engine`相关联。`Pool`负责创建新的DBAPI连接，通常在内存中维护DBAPI连接池，供频繁的重复使用。
+>
+> 在一个语句执行的过程中，`Connection`会创建一个额外的`ExecutionContext`对象。这个对象从开始执行的时刻，一直存在到`ResultProxy`消亡为止。
+
+#### Engine和Connection
+
+全局函数`create_engine`用来创建`Engine`对象，这个函数的第一个参数是一个数据库URL，还有一些关键字参数，用来控制`Engine`，`Pool`和`Dialect`对象的特性。其中关键字参数strategy用于指定创建`Engine`时的策略。函数会从全局的`strategies`字典中查找对应的策略（`EngineStrategy`的一个子类），将自己的参数传入策略类的`create`方法。如果strategy参数没有提供，则使用默认策略`DefaultEngineStrategy`。观察每个`EngineStrategy`子类的`create`方法，发现它们都会在创建`Engine`对象之前先创建`Dialect`对象和`Pool`对象，并将这两个对象的引用保存在`Engine`对象中，保证了`Engine`对象可以通过`Dialect`和`Pool`处理DBAPI。
+
+`Connection`类看起来比`Engine`类更加强大。`Engine.connect()`方法用于创建`Connection`：
 
 ```Python
-conn = engine.connect()
-result = conn.execute("select * from table")
-print result.fetchall()
-conn.close()
+_connection_cls = Connection
+
+def connect(self, **kwargs):
+    return self._connection_cls(self, **kwargs)
 ```
 
-`Engine`、`Connection`两个类的`execute`方法返回的结果是一个`ResultProxy`，它提供了一个与DBAPI的游标类似但功能更丰富的接口。`Engine`，`Connection`和`ResultProxy`分别对应于DBAPI模块、一个具体的DBAPI连接对象，和一个具体的DBAPI游标对象。
+调用`Engine.connect()`实际上是将`Engine`对象自己作为第一个参数传入了`Connection`的构造函数，但`Connection`的构造函数还要调用`Engine.raw_connection()`方法获得数据库连接。这样做主要是为了方便`Engine`的隐式执行接口。在`Connection`没有创建的时候，`Engine`也可以自己调用`raw_connection()`获得数据库连接。
 
-在底层，`Engine`引用了一个叫`Dialect`的对象。`Dialect`是一个有众多实现的抽象类，它的每一个实现都对应于一个具体的DBAPI和数据库。一个为`Engine`而创建的`Connection`会咨询`Dialect`作出选择，对于不同的目标DBAPI和数据库，`Connection`的行为都不一样。
+不论怎样，`Connection`拥有`Engine`的引用，并可以通过`Engine`的访问`Pool`和`Dialect`对象。对数据库的操作通常是使用`Connection.execute()`方法进行的。
 
-`Connection`创建时会从一个连接池获取并维护一个DBAPI的连接，这个连接池叫`Pool`，也和`Engine`相关联。`Pool`负责创建新的DBAPI连接，通常在内存中维护DBAPI连接池，供频繁的重复使用。
+#### Pool
 
-在一个语句执行的过程中，`Connection`会创建一个额外的`ExecutionContext`对象。这个对象从开始执行的时刻，一直存在到`ResultProxy`消亡为止。
+`Pool`负责管理DBAPI连接。`Connection`对象创建时，会从连接池中取出一个DBAPI连接，而在`close`方法调用时，会将连接归还。
 
-图20.2说明了所有这些对象之间的关系，以及它们与DBAPI组件间的关系。
+`Pool`的代码定义在`pool.py`中，包括抽象父类`Pool`，和几个有具体功能的子类：
 
-![Figure 20.2][fig2]
++ `QueuePool` 限制连接个数（默认使用）
++ `SingletonThreadPool` 为每个线程维护一个连接
++ `AssertionPool` 任何时候都只允许一个连接，否则抛出异常
++ `NullPool` 不进行任何池操作，直接打开/关闭DBAPI连接
++ `StaticPool` 有且仅有一个连接
 
-图20.2： Engine, Connection, ResultProxy API
+#### 执行SQL语句
 
-#### 处理DBAPI多变性
+`Connection`的`execute`方法执行一个SQL语句，并返回一个`ResultProxy`对象。`execute`方法接受多种类型的参数，参数类型可以是一个字符串，也可以是`ClauseElement`和`Executable`的共同子类。关于`execute`方法的参数在下文中详细讨论，这里主要分析`execute`方法执行时背后的过程。
 
-为了管理DBAPI多变的行为，首先我们需要考虑问题的领域。DBAPI的规约（目前是第二版）定义为一组很大程度上允许行为多变且留有许多未定义领域的API。于是，实际使用的DBAPI在多个领域都显示出很大程度的多变性，包括是否接受Python Unicode字符串，是否能够在INSERT语句执行后获取自动生成的主键，是否能说明参数的取值范围。这些DBAPI同样还有很多面对不同类型时的特殊行为，包括处理二进制、高精度数值、日期、布尔、Unicode等类型。
+```Python
+def execute(self, object, *multiparams, **params):
+    if isinstance(object, util.string_types[0]):
+        return self._execute_text(object, multiparams, params)
+    try:
+        meth = object._execute_on_connection
+    except AttributeError:
+        raise exc.InvalidRequestError(
+        "Unexecutable object type: %s" %
+        type(object))
+    else:
+        return meth(self, multiparams, params)
+```
 
-SQLAlchemy通过允许`Dialect`和`ExecutionContext`的多级子类多样性来解决这个问题。图20.3展示了当使用psycopg2时`Dialect`和`ExecutionContext`间的关系。`PGDialect`类提供了特定于PostgreSQL数据库的行为，包括ARRAY数据类型和schema catalog；`PGDialect_psycopg2`类提供了特定于psycopg2 DBAPI的行为，包括Unicode处理和服务器端游标行为。
+可以看到，`execute`方法对SQL语句对象的类型进行判断，如果是一个字符串，则调用`_execute_text`方法执行，否则调用对象的`_execute_on_connection`方法，而不同对象的`_execute_on_connection`方法会调用`Connection._execute_*()`方法，具体为：
 
-![Figure 20.3][fig3]
++ `sql.FunctionElement`对象，调用`Connection._execute_function()`
++ `schema.ColumnDefault`对象，调用`Connection._execute_default()`
++ `schema.DDL`对象，调用`Connection._execute_ddl()`
++ `sql.ClauseElement`对象，调用`Connection._execute_clauseelement()`
++ `sql.Compiled`对象，调用`Connection._execute_compiled()`
 
-图20.3： 简单的Dialect/ExecutionContext继承体系
+以上的`Connection._execute_*()`方法都调用了`Connection._execute_context()`方法。这个方法的第一个参数是`Dialect`对象，第二个参数是`ExecutionContext`对象的构造器（构造器从`Dialect`对象获取）。在方法中调用构造器构造了一个`ExecutionContext`对象，并根据context对象的状态调用dialect对象的相关方法产生结果。对不同的状态，调用的dialect对象的方法不同，总的来说，调用的是`Dialect.do_execute*()`方法。
 
-（这一段话说实在的没看懂）
-在处理支持多个数据库的DBAPI时，会出现上述模式的一个变体。这样的例子包括pyodbc（处理经由ODBC的任意数据库后端）和zxjdbc（一个处理JDBC的Jython驱动）。上述关系通过使用一个混入类(mixin class)得到扩展。混入类来自`sqlalchemy.connectors`包，提供了不同后端共有的DBAPI行为。图20.4展示了`sqlalchemy.connectors.pyodbc`中由不同的pyodbc方言（如MySQL方言和Microsoft SQL Server方言）共有的功能。
+从上述方法调用的过程可以看出，`Connection`的`execute`方法最终将生成结果的任务转交给了`Dialect`的`do_execute`方法。SQLAlchemy正是用这种方法应对多变的DBAPI实现的：`Connection`在执行SQL语句的时候，会咨询`Dialect`作出选择。因此对于不同的目标DBAPI和数据库，`Connection`的行为都不一样。
 
-![Figure 20.4][fig4]
+#### Dialect
 
-图20.4：dialect继承体系中的DBAPI行为
+`Dialect`定义在engine/interfaces.py文件中，是一个抽象的接口，其中定义了三个`do_execute*()`方法，分别是`do_execute()`，`do_executemany()`和`do_execute_no_params()`。`Dialect`的子类通过实现这些接口来定义自己执行时的行为。SQLAlchemy中默认的dialect子类是`DefaultDialect`。在默认实现中，`do_execute`方法调用`Cursor.execute`，而`Cursor`是来自DBAPI的类。在这里，SQLAlchemy核心层和DBAPI层连接了起来。
 
-`Dialect`和`ExecutionContext`对象提供了定义与数据库和DBAPI的每一项交互的方法，包括连接的参数应该如何格式化，包括如何处理语句执行时的古怪行为。`Dialect`还生成了SQL编译构件（用于为目标数据库正确生成SQL）和类型对象（用于定义Python数据与目标DBAPI和数据库间如何互相转化）。
+`sqlalchemy.dialects`包中包含有来自firebird，mssql，mysql，oracle，postgresql，sqlite，sybase等数据库的dialect。以SQLite数据库为例，`SQLiteDialect`继承自`DefaultDialect`，而`SQLiteDialect_pysqlite`和`SQLiteDialect_pysqlcipher`。SQLite的dialect没有重写`do_execute*()`，而是重写了一些其他的方法，来定义一些和`DefaultDialect`不同的行为。例如，SQLite没有内置的DATE，TIME，DATETIME类型，`SQLiteDialect`处理了这些问题。
 
-## 20.4 模式定义
+#### ResultProxy
 
-在数据库连接和交互建立好之后，下一步就是要提供创建和操纵SQL语句的方法了。为了实现这一点，首先需要定义我们将如何表示数据库中的表和字段(column)——也即所谓的的“模式”(schema)。表和字段表示了数据的组织方式，大部分的SQL语句是由和它们相关的的表达式和命令组成的。
+`ResultProxy`包装了一个DBAPI游标(cursor)对象，使一行结果中的各个字段更容易访问。在数据库术语中，结果通常称为一个行(row)。
 
-一个ORM或是数据访问层需要在程序级提供对SQL语言的访问，此方法的基础是描述表和字段的编程系统。SQLAlchemy在这里通过提供`Table`和`Column`构件，独立于用户的模型类定义描述数据库结构，将核心层和ORM层分离。将模式定义与ORM分离的原理在于，关系模式可以用关系数据库的术语（如果必要，还包括平台特定的细节）无歧义地设计，而无需对象-关系概念——这完全是两码事。独立于ORM组件也意味着模式描述系统对任何其他可能构建在核心层上的对象-关系系统都很重要。
+一个字段可以通过三种方式访问：
 
-`Table`和`Column`模型包含在一个叫做*metadata*（元数据）的概念内，用一个叫`MetaData`的集合对象代表`Table`对象的集合。这个结构主要源于Martin Fowler在*Patterns of Enterprise Application Architecture*一书中描述的“元数据映射”(MetaData Mapping)。图20.5展示了`sqlalchemy.schema`包中的一些关键元素。
+```Python
+row = fetchone()
+col1 = row[0] # 通过位置下标访问
+col2 = row['col2'] # 通过名字访问
+col3 = row[mytable.c.mycol] # 通过Column对象访问
+```
 
-![Figure 20.5][fig5]
+ResultProxy定义了`__iter__`方法，可以在ResultProxy对象上使用for循环，效果和不断调用fetchone方法一样：
 
-图20.5： sqlalchemy.schema基本对象
+```Python
+def __iter__(self):
+    while True:
+        row = self.fetchone()
+        if row is None:
+            return
+        else:
+            yield row
+```
 
-`Table`表示了目标schema中一个实际的表的名字等属性，它所含的`Column`对象集合代表了每个表中字段的名字和类型信息。`Table`中还含有一系列完整的描述constraint, index, sequence的对象，其中一些对引擎和SQL构建系统的行为影响很大。特别的，`ForeignKeyConstraint`在决定两个表如何进行连接上非常关键。
 
-`Table`和`Column`相比schema包中的的其他类的独特之处在于他们是双重继承的，从`sqlalchemy.schema`和`sqlalchemy.sql.expression`包中同时继承。它们不仅是作为schema级的模块，也是SQL表达式语言的语法单元。这个关系在图20.6中展示。
 
-![Figure 20.6][fig6]
+## 4. 模式定义
 
-图20.6： Table和Column的双重身份
+> 数据库模式是用形式化的语言描述的数据库系统的结构。在关系数据库中，模式定义了表、表中字段，以及表和字段间的关系
+>
+> —— [Webopedia](http://www.webopedia.com/TERM/S/schema.html)
 
-从图20.6中我们可以看出，`Table`继承自SQL的`FromClause`，即“你能select的对象”；`Column`继承自SQL的`ColumnElement`，即“你能在SQL表达式中使用的东西”。
-
-## 20.5 SQL表达式
-
-在SQLAlchemy诞生之初，如何生成SQL并不明确。一个文本语言是最可能的选择，因为这是一个普遍的方法，Hibernate's HQL等知名的对象-关系工具都以此作为核心。然而，在Python中有一个更好的方法：使用Python的对象和表达式生成表达式树结构，甚至是重载Python的操作符使其表现出SQL语句的行为。
-
-SQLAlchemy的表达式语言使用的Python对象和操作符主要受到lan Bicking的SQLObject中包含的SQLBuilder库的启发，虽然它也许不是第一个这么做的工具。在这种方式中，Python对象代表了一个SQL表达式的词法单元。这些对象的方法和重载的操作符就生成了源于它们的词法结构。最常见的对象是"Column"对象——SQLObject用一个映射到ORM上的类代表"Column"，放置在可以通过`.q`属性访问的命名空间里；SQLAlchemy则将属性命名为`.c`。这个`.c`属性一直保留到现在，在核心层的selectable元素，如表示table和select语句的元素上使用。
-
-#### 表达式树
-
-SQLAlchemy中的SQL表达式很像在分析SQL语句中产生的结构——一个分析树。唯一的不同在于开发者是直接构造出一个分析树，而不是从一个字符串中分析得到。分析树上节点的核心类型叫做`ClauseElement`，图20.7描述了`ClauseElement`和其他一些关键的类之间的关系。
-
-![Figure 20.7][fig7]
-
-图20.7： 基本的表达式继承体系
-
-通过使用构造函数，方法，重载的表达式，语句：
+直观来说，下面的SQL语句就描述了一个数据库的模式：
 
 ```SQL
-SELECT id FROM user WHERE name = ?
+CREATE TABLE users (
+    id INTEGER NOT NULL,
+    name VARCHAR,
+    fullname VARCHAR,
+    PRIMARY KEY (id)
+);
+
+CREATE TABLE addresses (
+    id INTEGER NOT NULL,
+    user_id INTEGER,
+    email_address VARCHAR NOT NULL,
+    PRIMARY KEY (id),
+    FOREIGN KEY(user_id) REFERENCES users (id)
+);
 ```
 
-的结构可以这样在Python中构造出来：
+SQLAlchemy的模式定义功能就是用一种抽象的方式表达上面SQL语句的内容。下面的代码定义了和上面SQL语句相同的模式：
 
 ```Python
-from sqlalchemy.sql import table, column, select
-user = table('user', column('id'), column('name'))
-stmt = select([user.c.id]).where(user.c.name=='ed')
-```
+metadata = MetaData()
 
-上面代码中`select`的结构如图20.8所示。注意到`_BindParam`中包含一个`'ed'`值，这会使SQL语句中产生一个用问号表示的bound parameter marker.
-
-![Figure 20.8][fig8]
-
-图20.8：表达式树示例
-
-从树的图形上我们可以看出，一个简单的自顶向下遍历就可以快速产生出一条SQL语句。我们在后面语句编译的部分还会详细探究。
-
-#### Python操作符
-
-在SQLAlchemy中，一个像这样的表达式：
-```Python
-column('a') == 2
-```
-
-得到的既不是`True`也不是`False`，而是一个SQL表达式结构。做到这一点的核心在于使用Python特殊操作符函数（如`__eq__`, `__ne__`, `__le__`, `__lt__`, `__add__`, `__mul__`）实现的操作符重载。面向字段的表达式节点通过使用混入类`ColumnOperators`提供重载的操作符。使用操作符重载后，表达式`column('a') == 2`等价于：
-
-```Python
-from sqlalchemy.sql.expression import _BinaryExpression
-from sqlalchemy.sql import column, bindparam
-from sqlalchemy.operators import eq
-
-_BinaryExpression(
-    left=column('a'),
-    right=bindparam('a', value=2, unique=True),
-    operator=eq
+users = Table('users', metadata,
+        Column('id', Integer, primary_key=True),
+        Column('name', String),
+        Column('fullname', String),
 )
+addresses = Table('addresses', metadata,
+        Column('id', Integer, primary_key=True),
+        Column('user_id', None, ForeignKey('users.id')),
+        Column('email_address', String, nullable=False),
+)
+
+metadata.create_all(engine)
 ```
 
-`eq`实际上是一个源于Python内置的`operator`的一个函数。将操作符表示为一个对象（如`operator.eq`）而不是一个字符串（如`=`）使字符串表示可以在语句编译时，针对具体的数据库方言指定。
+我们知道，SQL语言一共分为四大类：DDL，DML，DQL，DCL。DCL和具体的DBMS相关，这里不涉及。剩下的三类中，DDL和DML/DQL有很大的区别。上面的`CREATE TABLE`语句即属于DDL。对于DDL，SQLAlchemy使用Metadata进行抽象，而对于DML和DQL，SQLAlchemy使用SQL表达式语言进行抽象。
 
-#### 编译
+## 5. SQL表达式语言
 
-与SQL表达式树产生出字符串的SQL相关的中心类是`Compiled`类。这个类有`SQLCompiler`和`DDLCompiler`两个主要的子类。`SQLCompiler`为SELECT，INSERT，UPDATE，DELETE语句处理SQL渲染工作，这些语句统称为DQL（数据查询语言）和DML（数据操纵语言）。而`DDLCompiler`是处理CREATE和DROP语句的，这些语句统称为DDL（数据定义语言）。从`TypeCompiler`开始还有另一支类继承体系，关注类型的字符串表示。每个数据库方言提供自己的子类，继承自三个compiler type，来定义SQL语言特定于目标数据库的方面。图20.9提供了这个类继承体系关于PostgreSQL方言的概览。
+SQLAlchemy的作者Mike Bayer在文章中指出，SQLAlchemy的SQL表达式语言系统使用了Martin Fowler在*Patterns of Enterprise Application Architecture*书中描述的**查询对象**(Query Object)模式。Martin Fowler在书中是这么描述这个模式的：
 
-![Figure 20.9][fig9]
+> SQL是一个演化中的语言，很多开发人员对它不是非常熟悉。而且，你在写查询语句的时候需要知道数据库schema是什么样的。查询对象模式可以解决这些问题。
+>
+> 查询对象是一个解释器模式(Interpreter Pattern)，也就是一个对象可以把自己变成一个SQL查询。你可以通过使用类和属性，而不是表和字段来创建一条查询。用这种方法，你在写查询语句时可以不依赖数据库schema，对schema的改变也不会造成全局的影响。
 
-图20.9： 编译器继承体系，包括特定于PostgreSQL的实现
+Mike Bayer指出，SQL表达式的创建主要使用了**Python表达式**和**重载的操作符**。
 
-`Compiled`的子类提供了一系列的*visit*方法，每一个*visit*方法都被`ClauseElement`的一个特殊子类所引用。通过对（语法树上的）`ClauseElement`节点进行遍历，递归地连接每个visit函数的字符串输出，就构建出了一个语句。在这个过程中，`Compiled`对象维护关于匿名标识符名、bound parameter名，以及嵌套子查询的状态。这些都是为了产生出一个字符串形式的SQL语句，和带有默认值的bound parameter集合。图20.10展示了visit函数产生出字符串单元的过程。
+#### 源代码分析
 
-![Figure 20.10][fig10]
+`sqlalchemy.sql.dml.Insert`是`UpdateBase`的子类，而`UpdateBase`同时是`ClauseElement`和`Executable`的子类，所以可以将`Insert`的实例传给`Connection.execute()`
 
-图20.10： 一个语句编译过程中的调用树
+`select`是一个全局的函数，而不是类。在sql/expression.py中，调用`public_factory`，将`selectable.Select`类变为函数`select`，也就是将
+`Select.__init__()`赋值给`select`。
 
-一个完全的`Compiled`结构包括完整的SQL字符串和bound value的集合。(。。。）
+## 6. 对象-关系映射（ORM）
 
-## 20.6 ORM的类映射
+什么是ORM呢？让我们先看看Martin Fowler在书中所描述的**数据映射器**(Data Mapper)模式。原文中提到，SQLAlchemy的ORM系统正是借鉴了这种模式。
 
-我们现在将注意力转移到ORM上来。第一个目标是使用我们定义的表元信息(table metadata)系统，允许从用户定义的类到数据库表中的字段集合的映射。第二个目标是基于数据库中表间的关系，允许定义用户定义的类之间的关系。
+> ![Figure: DatabaseMapperSketch](http://martinfowler.com/eaaCatalog/databaseMapperSketch.gif)
+>
+> 对象和关系数据库组织数据的方式是不同的。对象中的很多部分，如继承，在关系数据库中是没有的。当你建立了一个有大量业务逻辑的对象模型，对象的schema和关系数据库的schema就可能不匹配。
+>
+> 但你仍需要在两种schema之间进行转换，这种转换本身就成为一个复杂的东西。如果内存中的对象知道关系数据库的结构，两者之间一者的改变就会影响到另一者。
+>
+> 数据映射器(Data Mapper)是将内存中的对象和数据库分离的一层系统。它的责任是分隔对象和关系数据库，并在两者之间转换数据。有了数据映射器，内存中的对象既不需要的SQL接口代码，也不需要知道数据库schema，甚至都不需要知道数据库是否存在。
+>
+> —— Martin Fowler: [*Patterns of Enterprise Application Architecture*, Data Mapper](http://martinfowler.com/eaaCatalog/dataMapper.html)
 
-SQLAlchemy将这个叫做“映射”(mapping)，这个名字来自Fowler的*Patterns of Enterprise Architecture*一书描述的著名的数据映射器模式(Data Mapper Pattern)。总体来看，SQLAlchemy的ORM很大程度上从Fowler详细描述的实践中借鉴而来。它还受到了著名的Java关系映射器Hibernate和lan Bicking的SQLObject的很大影响。
-
-#### Classical vs. Declarative
-
-我们使用术语*传统映射(classical mapping)*来指代SQLAlchemy将对象-关系数据映射应用到已存在的用户类的系统。这种映射形式取`Table`对象和用户定义的类，将两个独立定义的实体用一个叫`mapper`的函数结合在一起。一定`mapper`应用在一个用户定义的类上，这个类就新获得了与表中字段对应的属性：
-
-```Python
-class User(object):
-    pass
-
-mapper(User, user_table)
-
-# now User has an ".id" attribute
-User.id
-```
-
-`mapper`还能给类加上其他的属性，包括对应于其他对象引用的属性，也包括对应于任意SQL表达式引用的属性。给一个类添加任意属性的过程在Python中叫做“猴子补丁”(monkeypatching)。然而，由于我们并不是任意地添加属性，而是用数据驱动的方式添加，这个行为用术语*class instrumentation*来表达更为准确。
-
-SQLAlchemy近来的用法主要关注声明式（Declarative）扩展。声明式扩展是一个配置系统，看起来像是许多其他对象-关系工具使用的常见的类似活动记录的类声明系统。在这个系统中，最终用户显式在类定义中定义属性，每个属性代表类上一个需要被映射的属性。在大多数情况下，`Table`类和`mapper`函数都不会显式提及，只有类、`Column`对象、其他ORM相关的属性出现：
+为了理解上面这段话的含义，我们看下面的示例代码：
 
 ```Python
-class User(Base):
-    __tablename__ = 'user'
-    id = Column(Integer, primary_key=True)
-```
+from sqlalchemy import Table, MetaData, Column, Integer, String, ForeignKey
+from sqlalchemy.orm import mapper
 
-在上面的例子中，看起来是通过`id = Column()`直接实现了class instrumentation，但实际上并不是这样。声明式扩展使用一个Python元类（一种在一个类新定义时执行一系列操作的简便方法）来从已定义的类生成一个新的`Table`对象，并将这个对象和原来的类一起传给`mapper`函数，`mapper`函数用完全相同的方式实现功能，将它自己的属性附加到类上（在这个例子中，是`id`属性），取代原先的属性值。在元类的初始化完成时（即执行流离开`User`类描述的区块时），被`id`标记的`Column`对象已经移动到了一个新的`Table`中，并且`User.id`已经被一个特定于映射的新属性所取代。
+metadata = MetaData()
 
-SQLAlchemy看似应该有一个描述简单的声明式配置形式。然而，为了支持传统映射继续稳固化的工作，对声明式的支持被推迟了。在早期有一个叫ActiveMapper的临时扩展（后来成为了Elixir项目）支持声明式映射。它在一个高层的声明系统中重新定义了映射构件。声明式映射的目标是反转Elixir重度抽象方法的方向。它建立了一个系统，几乎原样保留了SQLAlchemy的传统映射概念，只是重新组织了它们的使用方式，使之更加简洁，并相比传统映射更适应类级扩展。
-
-无论使用传统映射还是声明式映射，映射到的类都表现出新的特性，能够根据自己的属性表达SQL构件。SQLAlchemy原先继承了SQLObject的行为，使用一个特殊的属性来获取SQL字段表达式，在SQLAlchemy中这个属性叫做`.c`，如下面的例子：
-
-```Python
-result = session.query(User).filter(User.c.username == 'ed').all()
-```
-
-然而，在版本0.4中，SQLAlchemy将这个功能移到映射到的属性自身：
-
-```Python
-result = session.query(User).filter(User.username == 'ed').all()
-```
-
-这个属性访问上的变化被证明是一个巨大的进步，因为它允许在类上出现类似字段（而不是字段）的对象获得额外的特定于类的能力，这些能力并不直接源于底层的`Table`对象。它还允许不同类型的类属性的集成使用，比如指向直接表中字段的属性，指向从字段生出的SQL表达式的属性，还有指向相关类的属性。最终，它实现了映射类和映射类的实例的对称性，因为同样的属性在不同的类中会有不同的行为。类上的属性返回SQL表达式，而实例上的属性返回实际的数据。
-
-#### 映射剖析
-
-添加到`User`类中的`id`属性是Python中的*描述符*（descriptor）对象——一个有`__get__`, `__set__`和`__del__`方法的对象，Python在运行时对所有关于这个属性的类的实例的操作都咨询它。SQLAlchemy的实现是`InstrumentedAttribute`，我们将用另一个例子揭示在此表象之下的内容。我们从一个`Table`和用户定义的类开始，建立了一个只有一个字段的映射，和一个定义了到相关类的引用的`relationship`：
-
-```Python
-user_table = Table("user", metadata,
-    Column('id', Integer, primary_key=True),
+users = Table('users', metadata,
+        Column('id', Integer, primary_key=True),
+        Column('name', String),
+        Column('fullname', String),
 )
 
 class User(object):
-    pass
+    def __init__(self, name, fullname, password):
+        self.name = name
+        self.fullname = fullname
+        self.password = password
 
-mapper(User, user_table, properties={
-    'related':relationship(Address)
-})
+mapper(User, users)
 ```
 
-当映射是完整的时候，和这个类相关的对象的结构在图20.11中详细描述。
+在上面的代码中，`User`类是用户自己定义的类，它是业务逻辑中的一个实体对象。而`users`是数据库的schema（在第四节“模式定义”中已经详细分析过）。使用`mapper`函数将`User`类映射到schema上。注意到，`User`类和数据库的schema完全无关，在不知道数据存储方式的情况下就可以写出这个类。这样就实现了对象和数据库的分离。
 
-![Figure 20.11][fig11]
+#### 两类映射
 
-图20.11：映射剖析
+所谓“传统的”和“声明式的”，不过是SQLAlchemy中用户定义ORM的新旧两种风格。SQLAlchemy一开始只支持传统映射，后来出现了声明式映射，它在传统映射的基础上建立，功能更丰富，表达更简洁。两个映射方式可以互相交换使用，结果是一模一样的。而且声明式映射最终也会被转换为传统映射——用`mapper()`函数映射一个用户定义的类，因此两种映射方式在本质上是没有区别的。
 
-这张图展示了SQLAlchemy的一个定义为两层分离的交互的映射，两层分别为用户定义的类和这个类映射到的表元数据。左半张图为class instrumentation，右半张图为SQL和数据库的功能。总体的模式为使用对象的组合来分离行为角色，使用对象继承区分一个角色下的行为差异。
+按我的理解，传统映射思路更加明确，更能体现对象和数据库分离的思想，而声明式映射功能更强大。
 
-在class instrumentation这半边，`ClassManager`和映射到的类相联系，而一组`InstrumentedAttribute`对象和映射到类上的每个属性相联系。`InstrumentedAttribute`还是前面提到的Python描述符，在基于类的表达式（如`User.id==5`中使用时，产生SQL表达式）。当处理`User`的一个实例时，`InstrumentedAttribute`将属性的行为委托给一个`AttributeImpl`对象——为所表示的数据定制的多个变体之一。
+## 8. 标识映射
 
-在映射这半边，`Mapper`代表了用户定义的类和一个可select单元（通常是`Table`）的关联。`Mapper`维护了一组`MapperProperty`属性对象，每个属性对象处理一个特定属性的SQL表示。`MapperProperty`最常见的变体是`ColumnProperty`（表示了一个映射到的字段或SQL表达式）和`RelationshipProperty`（表示了到另一个映射器的关联）。
+> ![Figure: Identity Mapper Sketch](http://www.martinfowler.com/eaaCatalog/idMapperSketch.gif)
+> 
+> 一个古老的谚语说，一个有两块手表的人永远不知道时间是多少。在从数据库加载对象时，如果两块表（两个对象）不一致，你会有更大的麻烦。你一不小心就可能从同一个数据库中加载数据并存到两个不同的对象中。当你同时更新了两个对象，你在把改变写到数据库时，就会出现一些奇怪的结果。
+>
+> 这还和一个明显的性能问题有关。如果你不止一次加载同一份数据，会导致远程调用的昂贵开销。那么，避免加载同一份数据两次，不仅能保证正确性，还能提升应用的性能。
+>
+> 标识映射保存了在一个事务中从数据库中读取出的所有数据。当你需要一份（加载到对象中的）数据时，首先检查标识映射，看看是不是已经有了。
+>
+> —— Martin Fowler, [*Patterns of Enterprise Application Architecture*, Identity Map](http://www.martinfowler.com/eaaCatalog/identityMap.html)
 
-`MapperProperty`将属性加载行为——包括属性如何在SQL语句中渲染，如何从结果行生成——委派给`LoadStrategy`对象。这个对象有多个变体，每个变体决定一个属性的加载行为是*推迟*（deferred），*急切*（eager），还是*立即*（immediate）。默认的一种
+> If the requested data has already been loaded from the database, the identity map returns the same instance of the already instantiated object, but if it has not been loaded yet, it loads it and stores the new object in the map. In this way, it follows a similar principle to lazy loading.
+> 
+> -- Wikipedia, Identity Map Pattern
 
+> A mapping between Python objects and their database identities. The identity map is a collection that’s associated with an ORM session object, and maintains a single instance of every database object keyed to its identity. The advantage to this pattern is that all operations which occur for a particular database identity are transparently coordinated onto a single object instance. When using an identity map in conjunction with an isolated transaction, having a reference to an object that’s known to have a particular primary key can be considered from a practical standpoint to be a proxy to the actual database row.
+>
+> -- SQLAlchemy Documentation, Glossary
 
-## 20.7 查询和加载行为
+## 9. 工作单元
 
-SQLAlchemy通过`Query`对象创建所有的对象加载行为。`Query`起始的基本状态包括*实体*（entity），它是被映射的类和（或）用于查询的SQL表达式的列表。它还有一个`Session`的引用，代表了到一个或多个数据库的连接，以及关于这些连接上的事务累积下来的缓存数据。下面是一个简单的例子：
+--- 
 
-```Python
-from sqlalchemy.orm import Session
-session = Session(engine)
-query = session.query(User)
-```
+# 参考资料
 
-我们创建一个会产出`User`对象的`Query`，并和刚创建的`Session`关联起来。`Query`提供了一个生成式的构建模式(generative builder pattern)——前面讨论到的`select`构件也是这样的方式，一次方法调用会将额外的条件和修饰符关联到一个语句构件上。当在`Query`上调用一个迭代的操作时，它构建了一个SQL表达式结构表示一个SELECT，送往数据库，然后将结果集翻译为面向ORM的结果，对应于被查询实体的初始集合。
++ [SQLAlchemy 1.0 官方文档](http://docs.sqlalchemy.org/en/rel_1_0/index.html)
++ [Mike Bayer: SQLAlchemy所实现的模式](http://techspot.zzzeek.org/2012/02/07/patterns-implemented-by-sqlalchemy/)
++ [Mike Bayer: SQLAlchemy架构回顾]
++ [Catalog of Patterns of Enterprise Application Architecture](http://martinfowler.com/eaaCatalog/)
+(http://techspot.zzzeek.org/files/2011/sqla_arch_retro.key.pdf)
++ [Hibernate文档 - 什么是ORM](http://hibernate.org/orm/what-is-an-orm/)
 
-`Query`在*SQL渲染*(SQL rendering)和*数据加载*(data loading)的这两部分操作之间做了一个艰难的区分。前者指的是构造一个SELECT语句，而后者指的是将SQL结果行翻译为映射到ORM的结构上。实际上，没有SQL渲染这一步，也可以进行数据加载，因为`Query`可能会要从用户手写的文本查询翻译到结果。
-
-一系列主要的`Mapper`对象可以看成是一个图，每个字段或拥有`ColumnProperty`的SQL表达式看做叶节点，而每个`RelationshipProperty`看做是指向另一个`Mapper`结点的边。SQL渲染和数据加载都利用了图上的递归下降遍历方法。在每个结点上执行的动作最终是和每个`MapperProperty`相关的`LoaderStrategy`的工作，它在SQL渲染阶段将字段和连接(join)添加到创建中的SELECT语句中，在数据加载阶段生成处理结果行的Python函数。
-
-在数据加载阶段生成的Python函数接收一个从数据库中获取的行，结果是改变内存中一个映射属性的状态。这些函数是在检查结果集中第一个到来的行，为一个特定的属性生成的。它们还受加载选项的影响。如果属性不需要加载，就不会生成函数。
-
-图20.12展示了在*连接急切加载*(joined eager loading)场景中，几个`LoaderStrategy`对象的遍历过程，说明了它们在`Query`的`_compile_context`方法中连接到一个渲染过的SQL语句。图中还展示了在`Query`的`instansces`方法中生成*行填充*(row population)函数的过程，接收结果行，并填充一个对象的属性。
-
-![Figure 20.12][fig12]
-
-图20.12：连接急切加载中loader strategy的遍历
-
-SQLAlchemy早期填充结果的方法使用了一个传统的遍历，将固定的对象方法和每个接受行的策略联系起来并对应工作。在0.5版本中第一次引入的可调用加载系统，极大地提升了性能。因为很多和行处理有关的决定只要在最开始做一次，而不是对每行都做一个决定，很多没有作用的函数调用就被消除了。
-
-## 20.8 会话/标识映射
-
-在SQLAlchemy中，`Session`对象为ORM的实际使用（即加载和持久化数据）呈现了公共的接口。它提供了对指定的数据库连接进行查询和持久化操作的入口点。
-
-`Session`除了作为数据库连接的入口，还维护了一个集合的引用，这个集合包含内存中所有与此`Session`相关的映射实体。通过这种方式，`Session`实现了*标识映射*(identity map)和*工作单元*(unit of work)模式——两个由Fowler定义的模式。标识映射为一个特定的`Session`维护了一个所有对象的映射，映射的ID在数据库中是唯一的，消除了重复的标识带来的问题。工作单元建立在标识映射上，提供了一个自动化系统，用最高效的方式将所有状态的变动持久化到数据库中。实际的持久化步骤叫做“刷新”(flush)，在现在的SQLAlchemy中，这个步骤通常是自动的。
-
-#### 开发历史
-
-`Session`一开始是一个多半隐藏着的系统，负责发送刷新的单一任务。刷新过程包括发送SQL语句到数据库，。。。刷新一直是SQLAlchemy所做的最复杂的操作之一。
-
-在早期的版本中，对*刷新*(flush)的调用是在一个叫`commit`的方法之后，这个方法是在一个隐式的、局部于线程的`objectstore`对象上的。在SQLAlchemy 0.1中，不需要调用`Session.add`，也根本没有显式的`Session`概念。用户所做的步骤就是创建映射，创建新对象，修改由查询加载的已存在的对象，然后将所有的变化通过`objectstore.commit`命令持久化。操作集合的对象池无条件是模块全局的和线程局部的。
-
-`objectstore.commit`模型直接吸引了最早的一批用户，但这个模型因为不灵活很快就遇到了困难。新接触现在的SQLAlchemy的用户可能会痛恨一大堆的步骤：为`Session`对象定义工厂（可能是注册），将对象一次组织到一个`Session`里。但这比早期整个完全是隐式的系统更可取。0.1版本便利的使用模式在现在的SQLAlchemy中仍然广泛存在，会话注册一般是配置为使用线程局部作用域。
-
-`Session`本身只在SQLAlchemy 0.2中引入，轻率地模仿了Hibernate中的`Session`对象。这个版本的特性有集成事务控制,`Session`可以通过`begin`方法放置到一个事务中，并通过`commit`方法完成。`objectstore.commit`方法重命名为`objectstore.flush`，新的`Session`对象可以在任意时刻创建。`Session`自身从`UnitOfWork`对象中分离出来，后者仍然是一个私有的对象，负责执行实际的刷新操作。
-
-当刷新过程成为用户显式调用的方法时，SQLAlchemy 0.4系列引入了*自动刷新*(autoflush)的概念，意思是每次查询之后立即发送刷新。自动刷新的好处是，查询发送的SQL语句可以访问内存的准确状态，因为所有的改变都已经发送过。早期的SQLAlchemy不包含这个特性，因为最常见的使用模式是，刷新语句同时会永久地提交改变。但引入自动刷新后，伴随而来的还有一个叫*事务型*(transactional)`Session`的特性，提供了在事务中可以自动启动一个`Session`，并会一直存在到用户显式调用`commit`为止。有了这个特性，`flush`方法再也不需要提交它刷新的数据，于是可以安全地自动调用。`Session`现在提供了通过刷新一步步在内存状态和SQL查询状态之间进行同步的功能，在显式调用`commit`之前，不会进行永久的改变。这种行为实际上和Java的Hibernate一模一样。然而，SQLAlchemy是基于Python的Storm ORM的相同行为，在0.3版本中引入这种使用风格的。
-
-版本0.5引入了*事务后消除*(post-transaction expiration)，带来了更多的事务集成。默认情况下，每次`commit`或`rollback`后，所有`Session`中的状态都会被消除，在后续的SQL语句重新SELECT数据时再重新生成，或是新事务的上下文中访问未被消除的对象的属性时重新生成。起初，SQLAlchemy建立在SELECT语句无条件地尽量少的发送的假设上。因为这个原因，在提交时消除的行为在后来变慢。然而，它完全解决了包含过期数据`Session`的问题，使它可以在事务后用一种简单的方式加载新的数据，而不需要重新构建所有已经加载的对象。早先，这个问题似乎没有合理地解决`Session`何时该将当前状态认定为过期并不明显，因此在下一次访问时产生了昂贵的SELECT语句集合。然而，一旦`Session`移动到一个“总是在事务中”的模型，事务端的重点就自然成为了数据消除，因为高度隔离的事务的本质就是它直到提交或回滚都看不到新的数据。当然，不同的数据库和配置，事务隔离的方面不同，也可能根本就没有事务。SQLAlchemy的消除模型完全可以接受这些使用模式，开发人员只需要清楚，低隔离层次可能在多个回话共享同一行时，在一个会话中暴露未隔离的改变。这和直接使用两个数据库连接时发生的情况根本没什么不同。
-
-#### 会话概览
-
-图20.13展示了一个`Session`和它处理的主要结构。
-
-![Figure 20.13][fig13]
-
-图20.13：会话概览
-
-
-
-## 20.10 结论
-
-SQLAlchemy从诞生之初就有很高的目标，想成为功能最丰富、最通用的数据库工具。它做到了这一点，并且一直将关注点放在关系型数据库上，认识到用深度、透彻的方式支持关系数据库的实用性是一项大的事业。甚至在现在，我们还不断发现这个事业的范围比以前想象的要大。
-
-为了从每个领域的功能中提取最有价值的东西，SQLAlchemy打算使用基于组件的方法，提供了很多不同的模块单元，应用程序可以单独使用或是组合起来使用。这个系统的创建、维护和交付都一直是很有挑战的。
-
-SQLAlchemy打算缓慢发展，这是基于一个理论——系统地、有基础地构建稳定的功能最终会比没有基础地快速发布新功能更有价值。SQLAlchemy用了很长的时间构建出一个一致的、文档齐全的用户故事。但在这个过程中，底层的架构一直领先着一步，导致在一些情况下会出现“时间机器”效应，新功能可以几乎在用户需要它们之前添加进来。
-
-Python语言是一个很好的宿主语言（如果有些挑剔的话，特别是在性能方面），语言的一致性和极大开放的运行时模型让SQLAlchemy可以比用其他语言写的类似产品有更好的用户体验。
-
-SQLAlchemy项目希望Python在尽可能广的领域得到广泛深入接受，并且关系数据库的使用也一直生机勃勃。SQLAlchemy的目标是要展示关系数据库，Python，以及经过充分考虑的对象模型都是非常有价值的开发工具。
-
+<!-- 以下内容不要删除 -->
 
 [fig1]: https://raw.githubusercontent.com/nettee/SQLAlchemy-survey/master/picture/layers.png
 [fig2]: https://raw.githubusercontent.com/nettee/SQLAlchemy-survey/master/picture/engine.png
