@@ -367,6 +367,10 @@ mapper(User, users)
 
 按我的理解，传统映射思路更加明确，更能体现对象和数据库分离的思想，而声明式映射功能更强大。
 
+## 7. 查询和加载
+
+所谓QUERY TIME和LOAD TIME两个部分，是因为ORM层工作在核心层（SQL表达式语言）之上，要调用SQL表达式语言的基础设施进行工作。
+
 ## 8. 标识映射
 
 > ![Figure: Identity Mapper Sketch](http://www.martinfowler.com/eaaCatalog/idMapperSketch.gif)
@@ -388,6 +392,8 @@ mapper(User, users)
 > -- SQLAlchemy Documentation, Glossary
 
 ## 9. 工作单元
+
+`MetaData.sorted_tables`输出的也是拓扑序。
 
 --- 
 
