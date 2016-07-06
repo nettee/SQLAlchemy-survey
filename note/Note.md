@@ -371,7 +371,32 @@ mapper(User, users)
 
 所谓QUERY TIME和LOAD TIME两个部分，是因为ORM层工作在核心层（SQL表达式语言）之上，要调用SQL表达式语言的基础设施进行工作。
 
-## 8. 标识映射
+## 8. 会话
+
+![Figure 20.13][fig13]
+
+`Session`对象包含了三个重要的部分
+
++ 事务
++ 对象的状态
++ 标识映射
+
+下面将依次讲解这三个重要的部分
+
+#### 事务
+
+事务是关系数据库中非常重要的概念。`Session`为用户维护了一个活动事务，而不需要用户手动打开。通过在`Session`上调用`commit()`提交事务，调用`rollback()`回滚事务。
+
+#### 对象的状态
+
+在`Session`中，一个对象有四种状态：
+
++ **Transient** - 这个对象不在会话中，而且没有保存到数据库。也就是说，它没有一个数据库ID。这个对象和ORM的唯一关系是，它的类关联到了一个`mapper()`
++ **Pending** - 当你调用`add()`并传入了一个transient对象，它就成了pending状态。这时候它还没有刷新到数据库中，但下一次刷新后就会保存到数据库
++ **Persistent** - 在会话当中，并且在数据库里有一条记录的对象。得到persistent对象有两种方法，一种是通过刷新将pending对象变成persistent对象，另一种是从数据库中查询得到对象
++ **Detached** - 对象和数据库里的一条记录对应（或曾经对应），但它不在任何会话中了。在会话中的事务提交后，所有的对象都变为detached状态
+
+#### 标识映射
 
 > ![Figure: Identity Mapper Sketch](http://www.martinfowler.com/eaaCatalog/idMapperSketch.gif)
 > 
