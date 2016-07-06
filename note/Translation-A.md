@@ -342,9 +342,11 @@ SQLAlchemy早期填充结果的方法使用了一个传统的遍历，将固定�
 
 #### 状态跟踪
 
-`IdentityMap`是一个从数据库ID到`InstanceState`对象的映射，是为叫做*persistent*的有数据库ID的对象工作的。`IdentityMap`的默认实现和`InstanceState`一起工作来管理自己的大小，方式是在指向一个实例的所有引用都删除后，把这个实例也删除——这和Python的`WeakValueDictionary`的工作方式是一样的。`Session`对所有标记为*dirty*或*deleted*的对象，以及标记为*new*的pending对象，通过创建到这些对象的强引用来保护这些对象免于垃圾回收。所有的强引用都会在刷新后被丢弃。
+`IdentityMap`是一个从数据库ID到`InstanceState`对象的映射，是为叫做*persistent*的有数据库ID的对象工作的。`IdentityMap`的默认实现和`InstanceState`一起工作来管理自己的大小，方式是在指向一个实例的所有强引用都删除后，把这个实例也删除——这和Python的`WeakValueDictionary`的工作方式是一样的。`Session`对所有标记为*dirty*或*deleted*的对象，以及标记为*new*的pending对象，通过创建到这些对象的强引用来保护这些对象免于垃圾回收。所有的强引用都会在刷新后被丢弃。
 
-<!-- TODO -->
+`InstanceState`还在维护特定对象的属性“变了啥”中扮演着重要的角色。它使用一个“改变时移动”的系统，将特定属性“从前的”值，在将到来的值赋值到对象当前的字典之前，在存储到一个叫`committed_state`的字典中。在刷新时，`committed_state`和对象关联的`__dict__`的内容会进行比较，产生每个对象的净改变。
+
+对于集合的情况，一个单独的`collections`包和`InstrumentedAttribute`/`InstanceState`系统合作，为一个特定映射对象的集合维护一个净改变的集合。常见的Python类如`set`，`list`，`dict`都在使用前进行继承并根据历史跟踪的增变方法进行扩展。集合系统在0.4版本修订为可扩充的，可以在任何类似集合的对象上使用。
 
 #### 事务控制
 
