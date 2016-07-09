@@ -1,4 +1,5 @@
 *.wiki
+*.html
 *.pyc
 *.pyo
 *.egg

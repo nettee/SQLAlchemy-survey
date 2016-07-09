@@ -1,8 +1,10 @@
 #### 写在前面
 
-SQLAlchemy不是一个应用软件，而是一个Python Library。库的一个特点是，为了给用户提供友好的语法，常常会使用一些语言的高级特性。SQLAlchemy也不例外，源代码中大量涉及到Python的反射（自省），并使用了描述符（descriptor）等高级语言特性，给阅读源代码造成了一定困难。
+这篇笔记主要是为了帮助读者更好地理解SQLAlchemy的架构。虽然原文中已经将SQLAlchemy架构的大部分讲得很全面了，但原文主要是介绍SQLAlchemy的架构，很多部分并没有详细解释。这篇笔记到了补充说明的作用。本笔记共10个小节，和原文的10个小节是完全对应的，读者可以在阅读本笔记的过程中随时参照原文。
 
-本调研笔记中的相当一部分内容参考自SQLAlchemy在线文档。
+SQLAlchemy的代码比较难以阅读，这是由它自身的特点决定的。首先，SQLAlchemy不是一个应用软件，而是一个Python Library。由于SQLAlchemy是一个数据库工具，它必须要适配各种主流的数据库，因此含有大量处理环境上下文的代码。其次，SQLAlchemy用Python书写，Python是动态类型的语言，变量不需要声明，而且可以在对象上添加任意的属性，这给阅读代码带来了很大的难度。总体来说，SQLAlchemy的源代码读起来非常困难。因此，这篇笔记中没有太多对源代码的分析，重点在于分析SQLAlchemy的架构层次，理解设计的思路、动机，并阐释其中使用的模式。
+
+-----
 
 ## 1. 数据库抽象面临的挑战
 
@@ -16,6 +18,8 @@ SQLAlchemy不是一个应用软件，而是一个Python Library。库的一个�
 + **关联性**：在面向对象语言中，关联表示为单向引用，而在关系数据库系统中，关联表示为外键。如果你在Python中需要定义双向关联，你必须定义两次关联。
 + **获取数据的方式**：你在Python中访问数据的方式和在关系数据库中访问数据的方式有本质的不同。在Python中，你在一个对象中通过引用访问到另一个对象。但这在关系数据库中不是一个获取数据的高效方法，你可能想要让SQL查询与的数量最小。
 
+如果你开发的系统使用的是面向对象语言和关系型数据库，当系统规模大到一定程度的时候，就一定会出现对象-关系阻抗失配的问题。SQLAlchemy这类的ORM工具就是用来解决这类问题的。
+
 ## 2. SQLAlchemy的两层结构
 
 原文中已经给出了SQLAlchemy的两个层次的关系图：
@@ -24,26 +28,23 @@ SQLAlchemy不是一个应用软件，而是一个Python Library。库的一个�
 
 SQLAlchemy的两个最主要的功能点就是**对象-关系映射（ORM）**和**SQL表达式语言**。SQL表达式语言可以独立于ORM使用。而当用户使用ORM时，SQL表达式语言在背后工作，但用户也可以通过开放的API操纵SQL表达式语言的行为。
 
+下面的3到9节都是围绕上图所展示的SQLAlchemy架构层次进行阐述的。其中，3-5节讲述的是核心层，而6-9节讲述的是ORM层。
 
-```
-（这一段暂时不用）
-在理解SQLAlchemy的分层之前，首先要明确SQLAlchemy的定位，SQLAlchemy工作在DBAPI上，是一个抽象层次更高的系统。在应用中使用SQLAlchemy处理关系数据库的时候，从上到下有这样几个层次：
+我们知道，SQL语言一共分为四大类：
 
-1. SQLAlchemy ORM层
-2. SQLAlchemy Core层
-3. DBAPI
-4. DBMS
++ DDL(Data Definition Language) - 主要包括CREATE TABLE，DROP，ALTER，用来定义数据库模式
++ DML(Data Manipulation Language) - 主要包括SELECT，用来查询数据 
++ DQL(Data Query Language) - 主要包括INSERT，UPDATE，DELETE，用来插入、更新、删除数据
++ DCL(Data Control Language) - 主要包括GRANT等
 
-我们假设用户使用了SQLite数据库。SQLite是一个DBMS（数据库管理系统），位于架构中的最底层。
+我们暂时不关注DCL。在DDL/DML/DQL中，DDL负责对数据库的模式进行定义，而DML和DQL负责数据的存取。虽然同属SQL语言，但它们关注的东西完全不同。SQLAlchemy中使用不同的模块对这两部分进行抽象。在核心层，SQLAlchemy使用`Metadata`对DDL进行抽象，使用SQL表达式语言对DML和DQL进行抽象。在ORM层，SQLAlchemy使用`mapper`对DDL进行抽象，使用`Query`对象对DML和DQL进行抽象。下面的4/5/6/7节分别对应这四块：
 
-Python中与SQLite进行交互的模块叫做pysqlite，由于SQLite数据库较为流行，pysqlite已经加入Python标准库中，名为[sqlite3][pythonlib-sqlite3]。
++ (4)模式定义 - 核心层的模式定义(DDL)
++ (5)SQL表达式语言 - 核心层的数据存取(DML/DQL)
++ (6)对象-关系映射 - ORM层的模式定义(DDL)
++ (7)查询和加载 - ORM层的数据存取(DML/DQL)
 
-[pythonlib-sqlite3]: https://docs.python.org/3/library/sqlite3.html
-
-pysqlite遵循DBAPI规范，[DBAPI][DBAPI]定义了Python访问数据库的通用接口，规定了Connection, Cursor等对象的行为和方法，不同的数据库厂商开发Python与数据库交互的模块时，都遵循DBAPI，这样Python程序就不需要考虑底层数据库的实现细节。在DBAPI这一层，已经进行了一次封装和抽象。
-
-[DBAPI]: https://www.python.org/dev/peps/pep-0249/
-```
+读者不妨在阅读时对比第4节和第6节、第5节和第7节的内容，会发现很多联系和相似之处。
 
 ## 3. 改良DBAPI
 
@@ -52,8 +53,8 @@ pysqlite遵循DBAPI规范，[DBAPI][DBAPI]定义了Python访问数据库的通�
 > DBAPI是“Python数据库API规范”（Python Database API Specification）的简称。这是在Python中广泛使用的规范，定义了数据库连接的第三方库的使用模式。DBAPI是一个低层的API，在一个Python应用中基本上位于最底层，和数据库直接进行交互。SQLAlchemy的方言系统按照DBAPI的操作来构建。基本上，一个方言就是DBAPI加上一个特定的数据库引擎。通过在`create_engine()`函数中提供不同的数据库URL可以将方言绑定到不同的数据库引擎上。 
 >
 > 参见： [PEP 249 - Python Database API Specification v2.0](http://www.python.org/dev/peps/pep-0249/)
->
-> —— [SQLAlchemy文档 - 术语表 - DBAPI](http://docs.sqlalchemy.org/en/rel_1_0/glossary.html#term-dbapi)
+
+—— [SQLAlchemy文档 - 术语表 - DBAPI](http://docs.sqlalchemy.org/en/rel_1_0/glossary.html#term-dbapi)
 
 
 PEP的文档介绍比较枯燥，我们可以通过这个示例代码直观地理解DBAPI的使用模式：
@@ -188,8 +189,8 @@ def __iter__(self):
 ## 4. 模式定义
 
 > 数据库模式是用形式化的语言描述的数据库系统的结构。在关系数据库中，模式定义了表、表中字段，以及表和字段间的关系
->
-> —— [Webopedia](http://www.webopedia.com/TERM/S/schema.html)
+
+—— [Webopedia](http://www.webopedia.com/TERM/S/schema.html)
 
 直观来说，下面的SQL语句就描述了一个数据库的模式：
 
@@ -231,87 +232,20 @@ metadata.create_all(engine)
 
 `MetaData`的名字来自元数据映射模式，但真正实现了这个模式的实际上是`Table`和`mapper()`函数，下面关于ORM的章节将会详细讲述。
 
-`MetaData`对象保存了所有的schema相关的所有结构，特别是`Table`对象。`sorted_tables`方法返回`Table`对象的列表。
-
-In most cases, individual :class:`~sqlalchemy.schema.Table` objects have been
-explicitly declared, and these objects are typically accessed directly as
-module-level variables in an application. Once a
-:class:
-
-当一个`Table`对象被创建时，就有了很多访问信息的方法：
-
-```Python
-employees = Table('employees', metadata,
-    Column('employee_id', Integer, primary_key=True),
-    Column('employee_name', String(60), nullable=False),
-    Column('employee_dept', Integer, ForeignKey("departments.department_id"))
-)
-
-# access the column "EMPLOYEE_ID":
-employees.columns.employee_id
-
-# or just
-employees.c.employee_id
-
-# via string
-employees.c['employee_id']
-
-# iterate through all columns
-for c in employees.c:
-    print c
-
-# get the table's primary key columns
-for primary_key in employees.primary_key:
-    print primary_key
-
-# get the table's foreign key objects:
-for fkey in employees.foreign_keys:
-    print fkey
-
-# access the table's MetaData:
-employees.metadata
-
-# access the table's bound Engine or Connection, if its MetaData is bound:
-employees.bind
-
-# access a column's name, type, nullable, primary key, foreign key
-employees.c.employee_id.name
-employees.c.employee_id.type
-employees.c.employee_id.nullable
-employees.c.employee_id.primary_key
-employees.c.employee_dept.foreign_keys
-
-# get the "key" of a column, which defaults to its name, but can
-# be any user-defined string:
-employees.c.employee_name.key
-
-# access a column's table:
-employees.c.employee_id.table is employees
-
-# get the table related by a foreign key
-list(employees.c.employee_dept.foreign_keys)[0].column.table
-```
-
- has been defined, it has a full set of
-accessors which allow inspection of its properties. Given the following
-:class:`~sqlalchemy.schema.Table` definition::
-
-
-
-
+`MetaData`对象保存了所有的schema相关的所有结构，特别是`Table`对象。`sorted_tables`方法返回`Table`对象经过拓扑排序的列表。关于表的拓扑排序，参见第九节“工作单元”。
 
 阅读源代码，`Table`的构造函数`__new__`的前两个参数分别是表名和`MetaData`对象。构造函数会创建一个名字唯一的`Table`对象，用同样的表名和`MetaData`对象再次调用构造函数，会返回相同的对象。因此`Table`的构造函数充当了“注册”的角色。
 
-
-我们知道，SQL语言一共分为四大类：DDL，DML，DQL，DCL。DCL和具体的DBMS相关，这里不涉及。剩下的三类中，DDL和DML/DQL有很大的区别。上面的`CREATE TABLE`语句即属于DDL。对于DDL，SQLAlchemy使用Metadata进行抽象，而对于DML和DQL，SQLAlchemy使用SQL表达式语言进行抽象。
-
 ## 5. SQL表达式语言
 
-SQLAlchemy的作者Mike Bayer在文章中指出，SQLAlchemy的SQL表达式语言系统使用了Martin Fowler在*Patterns of Enterprise Application Architecture*书中描述的**查询对象**(Query Object)模式。Martin Fowler在书中是这么描述这个模式的：
+`Query`对象实现了Martin Fowler定义的*查询对象*(Query Object)模式。Martin Fowler在书中是这么描述这个模式的：
 
 > SQL是一个演化中的语言，很多开发人员对它不是非常熟悉。而且，你在写查询语句的时候需要知道数据库schema是什么样的。查询对象模式可以解决这些问题。
 >
 > 查询对象是一个解释器模式(Interpreter Pattern)，也就是一个对象可以把自己变成一个SQL查询。你可以通过使用类和属性，而不是表和字段来创建一条查询。用这种方法，你在写查询语句时可以不依赖数据库schema，对schema的改变也不会造成全局的影响。
+
+—— Martin Fowler: [*Patterns of Enterprise Application Architecture*, Query Object](http://martinfowler.com/eaaCatalog/queryObject.html)
+
 
 Mike Bayer指出，SQL表达式的创建主要使用了**Python表达式**和**重载的操作符**。
 
@@ -333,8 +267,8 @@ Mike Bayer指出，SQL表达式的创建主要使用了**Python表达式**和**�
 > 但你仍需要在两种schema之间进行转换，这种转换本身就成为一个复杂的东西。如果内存中的对象知道关系数据库的结构，两者之间一者的改变就会影响到另一者。
 >
 > 数据映射器(Data Mapper)是将内存中的对象和数据库分离的一层系统。它的责任是分隔对象和关系数据库，并在两者之间转换数据。有了数据映射器，内存中的对象既不需要的SQL接口代码，也不需要知道数据库schema，甚至都不需要知道数据库是否存在。
->
-> —— Martin Fowler: [*Patterns of Enterprise Application Architecture*, Data Mapper](http://martinfowler.com/eaaCatalog/dataMapper.html)
+
+—— Martin Fowler: [*Patterns of Enterprise Application Architecture*, Data Mapper](http://martinfowler.com/eaaCatalog/dataMapper.html)
 
 为了理解上面这段话的含义，我们看下面的示例代码：
 
@@ -369,29 +303,62 @@ mapper(User, users)
 
 ## 7. 查询和加载
 
+#### 查询对象
+
+前面已经提到过，SQLAlchemy的ORM层建立在核心层之上，因此用户使用ORM层时，不会使用核心层中`connection.execute()`之类的接口。`Session`（会话）成为用户使用数据库的唯一入口。而用户通过`Session`进行查询时，需要使用`Query`对象进行查询。示例代码如下：
+
+```Python
+session = Session(engine)
+result = session.query(User).filter(User.name == 'ed').all()
+```
+
+`Query`对象实现了Martin Fowler定义的*查询对象*(Query Object)模式。在第五节中已经提到，`select()`也实现了这个模式。实际上`Query`和`select()`的功能很相似，都是进行数据库查询，只不过一个工作在核心层，一个工作在ORM层。比较`select()`的代码：
+
+```Python
+connection = engine.connect()
+result = connection.execute(select([users])).where(users.c.name == 'ed')
+```
+
 所谓QUERY TIME和LOAD TIME两个部分，是因为ORM层工作在核心层（SQL表达式语言）之上，要调用SQL表达式语言的基础设施进行工作。
 
 ## 8. 会话
 
-前面已经提到过，SQLAlchemy的ORM层建立在核心层之上，因此用户使用ORM层时，不会使用核心层中`connection.execute()`之类的接口。`Session`（会话）成为用户使用数据库的唯一入口。原文中的图20.13非常清晰地展示了会话的组成部分：
+原文中的图20.13非常清晰地展示了会话的组成部分：
 
 ![Figure 20.13][fig13]
 
-从图中可以看出，`Session`对象包含了三个重要的部分
+前一节已经分析了`Query`对象，它主要负责进行查询和对象加载。而`Session`负责的是更多细致和琐碎的工作。从图中可以看出，`Session`对象包含了三个重要的部分
 
-+ 事务
-+ 对象的状态
 + 标识映射
++ 对象的状态
++ 事务
 
-下面将依次讲解这三个重要的部分。
+标识映射和状态跟踪之间的配合，是我认为SQLAlchemy设计最为精妙的两个部分之一。下面会详细介绍这两部分内容。
 
-#### 事务
+#### 标识映射
 
-事务是关系数据库中非常重要的概念。`Session`为用户维护了一个活动事务，而不需要用户手动打开。通过在`Session`上调用`commit()`提交事务，调用`rollback()`回滚事务。
+标识映射(Identity Map)是一个由Martin Fowler定义的模式，下面是Martin Fowler在书中对这个模式的介绍：
 
-#### 对象的状态
+> ![Figure: Identity Mapper Sketch](http://www.martinfowler.com/eaaCatalog/idMapperSketch.gif)
+>
+> 一个古老的谚语说，一个有两块手表的人永远不知道时间是多少。在从数据库加载对象时，如果两块表（两个对象）不一致，你会有更大的麻烦。你一不小心就可能从同一个数据库中加载数据并存到两个不同的对象中。当你同时更新了两个对象，你在把改变写到数据库时，就会出现一些奇怪的结果。
+> 
+> 这还和一个明显的性能问题有关。如果你不止一次加载同一份数据，会导致远程调用的昂贵开销。那么，避免加载同一份数据两次，不仅能保证正确性，还能提升应用的性能。
+> 
+> 标识映射保存了在一个事务中从数据库中读取出的所有数据。当你需要一份（加载到对象中的）数据时，首先检查标识映射，看看是不是已经有了。
 
-在`Session`中，一个对象有四种状态：
+—— Martin Fowler, [*Patterns of Enterprise Application Architecture*, Identity Map](http://www.martinfowler.com/eaaCatalog/identityMap.html)
+
+简单的说，标识映射是一个Python字典，是从一个Python对象到这个对象的数据库ID的映射。当应用程序试图获取一个对象时，如果对象还没有被加载，标识映射会加载这个对象，并保存在字典里；而如果对象已经加载过，标识映射会从字典里取出原先的对象。标识映射有两个显著的好处：
+
+1. 已加载的对象被“缓存”下来，不需要加载多次，造成额外开销。这实际上是一种懒惰加载(lazy loading)
+2. 保证应用程序获取对象时，得到的是唯一的对象，避免数据不一致的问题
+
+在SQLAlchemy的实际实现中，`IdentityMap`的key是数据库ID，但value不是一个对象，而是保存了对象状态的`InstanceState`。下面“状态跟踪”解释了`IdentityMap`为什么要这样设计。
+
+#### 状态跟踪
+
+在`Session`中，一个对象有四种状态，用一个`InstanceState`来记录：
 
 + **Transient** - 这个对象不在会话中，而且没有保存到数据库。也就是说，它没有一个数据库ID。这个对象和ORM的唯一关系是，它的类关联到了一个`mapper()`
 + **Pending** - 当你调用`add()`并传入了一个transient对象，它就成了pending状态。这时候它还没有刷新到数据库中，但下一次刷新后就会保存到数据库
@@ -404,41 +371,26 @@ mapper(User, users)
 
 那么，何时将这个对象丢弃掉呢？首先，不能丢弃得太早。因为当对象在persistent状态时，用户可能进行一次查询操作，通过标识映射找到了这个内存中的对象。如果太早丢弃，这时候就要从数据库中重新加载对象，造成不必要的开销。其次，也不能丢弃得太晚，因为这样会话中会保留大量的对象，内存得不到及时的回收。那么最好的方法，就是交给垃圾回收器来做决定，垃圾回收器在内存不够的时候会释放对象，回收内存，同时有让对象在内存中保持一段时间，在需要的时候可以拿来使用。
 
-`Session`使用*弱引用*(weak reference)机制来实现这一点，所谓弱引用，就是说，在保存了对象的引用的情况下，对象仍然可能被垃圾回收器回收。在某一时刻通过引用访问对象时，对象可能存在也可能不存在，如果对象不存在，就重新从数据库中加载对象。而如果不希望对象被回收，只需要另外保存一个对象的强引用即可。
+`Session`使用*弱引用*(weak reference)机制来实现这一点，所谓弱引用，就是说，在保存了对象的引用的情况下，对象仍然可能被垃圾回收器回收。在某一时刻通过引用访问对象时，对象可能存在也可能不存在，如果对象不存在，就重新从数据库中加载对象。而如果不希望对象被回收，只需要另外保存一个对象的强引用即可。`Session`中的`IdentityMap`，实际上是一个“弱引用字典”(weak value dictionary)，也就是说，映射中的值(value)是弱引用的，当字典中的值没有强引用指向它时，字典中的这个键值对就会被清除。关于弱引用字典的详细资料可以查看[Python官方文档-WeakValueDictionary](https://docs.python.org/3/library/weakref.html#weakref.WeakValueDictionary)。
 
 图中显示，`Session`对象包含了一个`new`属性和一个`deleted`属性。阅读源代码发现，`Session`还包含一个`dirty`属性。这三个属性都是对象的集合。顾名思义，`new`表示刚刚被加入会话的对象，`dirty`属性表示刚刚被修改的对象，而`deleted`属性表示在会话中被删除的对象。这三个对象都有一个共同的特点：它们都是内存中经过改变而和数据库不一致的数据，正是上面“对象的四个状态”中的pending状态。也就是说，`Session`保存了所有处于pending状态的对象的强引用，这保证了这些对象不会被垃圾回收器回收。对于其他的对象，`Session`只保留了弱引用。
 
-#### 标识映射
-
-> ![Figure: Identity Mapper Sketch](http://www.martinfowler.com/eaaCatalog/idMapperSketch.gif)
-> 
-> 一个古老的谚语说，一个有两块手表的人永远不知道时间是多少。在从数据库加载对象时，如果两块表（两个对象）不一致，你会有更大的麻烦。你一不小心就可能从同一个数据库中加载数据并存到两个不同的对象中。当你同时更新了两个对象，你在把改变写到数据库时，就会出现一些奇怪的结果。
->
-> 这还和一个明显的性能问题有关。如果你不止一次加载同一份数据，会导致远程调用的昂贵开销。那么，避免加载同一份数据两次，不仅能保证正确性，还能提升应用的性能。
->
-> 标识映射保存了在一个事务中从数据库中读取出的所有数据。当你需要一份（加载到对象中的）数据时，首先检查标识映射，看看是不是已经有了。
->
-> —— Martin Fowler, [*Patterns of Enterprise Application Architecture*, Identity Map](http://www.martinfowler.com/eaaCatalog/identityMap.html)
-
-> If the requested data has already been loaded from the database, the identity map returns the same instance of the already instantiated object, but if it has not been loaded yet, it loads it and stores the new object in the map. In this way, it follows a similar principle to lazy loading.
-> 
-> -- Wikipedia, Identity Map Pattern
-
-> A mapping between Python objects and their database identities. The identity map is a collection that’s associated with an ORM session object, and maintains a single instance of every database object keyed to its identity. The advantage to this pattern is that all operations which occur for a particular database identity are transparently coordinated onto a single object instance. When using an identity map in conjunction with an isolated transaction, having a reference to an object that’s known to have a particular primary key can be considered from a practical standpoint to be a proxy to the actual database row.
->
-> -- SQLAlchemy Documentation, Glossary
 
 ## 9. 工作单元
 
+工作单元也是Martin Fowler在书中定义的模式，SQLAlchemy的`unitofwork`模块实现了这个模式。SQLAlchemy文档中说，工作单元模式“自动地跟踪对象上发生的改变，周期性地将pending的改变刷新到数据库中”（[SQLAlchemy文档 - 术语表 - unit of work](http://docs.sqlalchemy.org/en/rel_1_0/glossary.html#term-unit-of-work)）。工作单元和会话之间的关系是：会话定义了对象的四个状态，而工作单元负责将会话中的pending状态对象转移到persistent状态，在这个过程中完成数据库持久化的工作。用户调用`Session`的`commit`方法，讲对数据的查询、更新等操作保存到数据库中。原文中提到，`commit`方法调用了`flush`方法进行“刷新”操作，而`flush`的所有实际工作都由工作单元模块完成。
 
+工作单元是我认为SQLAlchemy设计最精妙的两个部分之二。要理解工作单元的精妙之处，首先要知道数据库持久化工作的主要难点在哪里。内存的速度很快，在一段时间内可能有很多对象的状态发生了改变。要将这些改变进行持久化，最简单的做法是，对每一个发生变化的对象，生成一条SQL语句（可能是INSERT语句、UPDATE语句或DELETE语句），进行一次数据库调用。但是数据库的写入速度要比内存慢很多，太多的数据库操作会极大地降低性能。要想实现高效，需要一次将一批数据送入数据库。
 
-`MetaData.sorted_tables`输出的也是拓扑序。
+然而，这些对象并不能按照任意的顺序进行持久化。例如，当两个表之间存在外键关系，如果想要持久化一个存在外键的对象，就要先对外键引用的对象进行持久化。这意味着，虽然可以一次将一批对象持久化，但遇到有外键的对象，就必须停下来，先持久化那个外键引用的对象。于是实际上还是进行了很多次的数据库调用。
+
+工作单元则使用了一种非常优越的模式，在进行持久化操作之前，先安排好对象进行持久化的顺序。持久化的时候只需要将一批批的对象送到数据库，而不需要在处理每个对象之前先考虑一下是不是还有别的依赖。工作单元将对象之间的依赖关系用有向图进行建模，根据图论中有向无环图的拓扑排序，就可以安排出所有对象刷新的顺序。关于具体的步骤，原文中已经讲得很清楚了，在此不再赘述。
 
 ## 10. 结语
 
 --- 
 
-# 参考资料
+## 参考资料
 
 + [SQLAlchemy 1.0 官方文档](http://docs.sqlalchemy.org/en/rel_1_0/index.html)
 + Martin Fowler: Patterns of Enterprise Application Architecture 
@@ -446,8 +398,6 @@ mapper(User, users)
 + [Mike Bayer: SQLAlchemy架构回顾](http://techspot.zzzeek.org/files/2011/sqla_arch_retro.key.pdf)
 + [Catalog of Patterns of Enterprise Application Architecture](http://martinfowler.com/eaaCatalog/)
 + [Hibernate文档 - 什么是ORM](http://hibernate.org/orm/what-is-an-orm/)
-
-<!-- 以下内容不要删除 -->
 
 [fig1]: https://raw.githubusercontent.com/nettee/SQLAlchemy-survey/master/picture/layers.png
 [fig2]: https://raw.githubusercontent.com/nettee/SQLAlchemy-survey/master/picture/engine.png
